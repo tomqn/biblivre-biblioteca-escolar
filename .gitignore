@@ -1,0 +1,21 @@
+# Bibliotecas (vêm do Biblivre original)
+WEB-INF/lib/
+*.jar
+
+# Cache e temporários
+work/
+temp/
+logs/
+*.log
+*.class
+
+# Arquivos do sistema
+Thumbs.db
+.DS_Store
+
+# Backups
+*-backup*/
+*.zip
+
+# Dados sensíveis
+*.properties
