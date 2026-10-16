@@ -135,6 +135,69 @@ Arquivos: `jsp/capa.jsp`, `static/scripts/biblivre.capas.js`, seção 14 de
 `jsp/search/bibliographic.jsp` e o topo do `jsp/index.jsp` (rota
 `?controller=capa`).
 
+### 🔒 Privacidade e segurança
+
+- **Atrasos saíram da página inicial.** Agora ficam só no Painel da
+  biblioteca (Administração → Relatórios), que exige login com permissão
+  de relatórios. A checagem antiga de "está logado" era falha e podia
+  mostrar nomes de alunos a visitantes.
+- **Turma lida só do campo de turma do cadastro.** O código detecta
+  sozinho um campo chamado ou rotulado "Turma" (ou classe/série/sala).
+  Se não achar, só aceita valores com formato de turma (6A, 7º B).
+  Telefone e e-mail nunca mais aparecem como turma. Para fixar o campo,
+  edite `BIB_CAMPO_TURMA_FIXO` em `jsp/inc/biblioteca.jspf`.
+- **Nome abreviado na página pública:** o Clube da leitura mostra
+  "Ana C." em vez do nome completo.
+- **Sem senha no código:** todas as páginas usam a conexão do próprio
+  Biblivre (`jdbc/biblivre4`). A senha fica só no `context.xml` do Tomcat.
+- **Erros vão para o log** do Tomcat (`catalina.out`) em vez de sumirem.
+
+#### Trocar a senha padrão do banco (fazer no servidor)
+
+O Biblivre vem com a senha `abracadabra`, que é pública. Para trocar:
+
+1. No PostgreSQL: `ALTER ROLE biblivre WITH PASSWORD 'uma-senha-forte';`
+   (faça o mesmo para `postgres` se ele também usa a senha padrão).
+2. No Tomcat, abra o arquivo de contexto do Biblivre
+   (`conf/Catalina/localhost/Biblivre4.xml` ou
+   `webapps/Biblivre4/META-INF/context.xml`) e troque `password="abracadabra"`
+   pela senha nova em todos os `<Resource>`.
+3. Reinicie o Tomcat.
+
+### 🎒 Filtro por faixa na página inicial
+
+Botões "Todos / 1º ao 5º ano / 6º ano em diante" no topo da home. O
+filtro vale para todas as vitrines e para os rankings de turmas e
+leitores, e o navegador lembra a última escolha.
+
+A faixa de cada livro é calculada pelo **histórico de empréstimos dos
+últimos 2 anos**: se 30% ou mais das retiradas foram de turmas do 1º ao
+5º ano, o livro entra nessa faixa (idem para o 6º em diante). Livros sem
+histórico aparecem nas duas. Não exige catalogação extra.
+
+### 📊 Painel da biblioteca (Administração → Relatórios)
+
+Acima dos relatórios em PDF do Biblivre, um painel com filtros de
+período (este mês, mês passado, este ano, 12 meses ou datas livres) e de
+faixa de turmas:
+
+- Resumo: empréstimos, leitores, média por leitor, % de alunos que
+  leram, títulos diferentes e atrasos de hoje
+- Devoluções em atraso (nome completo, turma, livro, tombo, prazo, dias)
+- Comparativo mês a mês com gráfico e variação contra o ano anterior
+- Turmas com mais empréstimos, com % de alunos que leram e livros por aluno
+- Quem mais pegou livros (top 50)
+- Livros mais emprestados (top 30)
+- Assuntos mais lidos (palavras do campo de assunto 650 e afins)
+- Movimento por dia da semana
+- Acervo parado (sem empréstimo há mais de 1 ano)
+
+Cada tabela tem "Exportar CSV" (abre direto no Excel) e o painel inteiro
+tem versão para impressão.
+
+Arquivos: `jsp/inc/biblioteca.jspf` (funções compartilhadas),
+`jsp/inc/painel_relatorios.jspf` e `jsp/administration/reports.jsp`.
+
 ### 📐 Responsividade
 
 - Breakpoints únicos na home: 1100 / 900 / 640 / 400 px

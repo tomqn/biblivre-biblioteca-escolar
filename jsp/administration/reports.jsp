@@ -7,6 +7,7 @@
 <%@ taglib prefix="layout" uri="/WEB-INF/tlds/layout.tld" %>
 <%@ taglib prefix="i18n" uri="/WEB-INF/tlds/translations.tld" %>
 <%@ taglib prefix="c" uri="http://java.sun.com/jsp/jstl/core" %>
+<%@ include file="/jsp/inc/biblioteca.jspf" %>
 
 <layout:head>
 	<link rel="stylesheet" type="text/css" href="static/styles/biblivre.administration.css" />
@@ -406,7 +407,10 @@
 </layout:head>
 
 <layout:body>
-	<div class="page_help"><i18n:text key="administration.reports.page_help" /></div>
+	<%@ include file="/jsp/inc/painel_relatorios.jspf" %>
+
+	<h2 class="rp-pdf-titulo" id="rp-pdf">Relatórios em PDF do Biblivre</h2>
+	<div class="page_help rp-pdf"><i18n:text key="administration.reports.page_help" /></div>
 	
 	<fieldset id="biblivre_reports_form" class="block reports">
 		<legend><i18n:text key="administration.reports.title" /></legend>

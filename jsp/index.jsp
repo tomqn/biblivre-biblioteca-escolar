@@ -11,6 +11,7 @@
 
 <%@ taglib prefix="layout" uri="/WEB-INF/tlds/layout.tld" %>
 <%@ taglib prefix="i18n" uri="/WEB-INF/tlds/translations.tld" %>
+<%@ include file="/jsp/inc/biblioteca.jspf" %>
 <%
     /* Rota das capas: toda URL "?controller=capa" cai aqui (o Biblivre
        despacha controllers desconhecidos para o index.jsp). Encaminhamos
@@ -25,12 +26,6 @@
 %>
 
 <%!
-    private String getNomeCurto(String nomeCompleto) {
-        if (nomeCompleto == null) return "Desconhecido";
-        String[] partes = nomeCompleto.trim().split("\\s+");
-        return partes.length >= 2 ? partes[0] + " " + partes[1] : partes[0];
-    }
-
     private String getIniciais(String nomeCompleto) {
         if (nomeCompleto == null || nomeCompleto.trim().isEmpty()) return "?";
         String[] partes = nomeCompleto.trim().split("\\s+");
@@ -50,21 +45,6 @@
 
     private void closeQuietly(Connection c) {
         if (c != null) try { c.close(); } catch (Exception ignored) {}
-    }
-
-    /* Conexão: usa o pool do próprio Biblivre (JNDI jdbc/biblivre4). Assim
-       funciona em qualquer instalação, sem senha fixa no código. */
-    private Connection abrirConexao() throws Exception {
-        try {
-            javax.sql.DataSource ds = (javax.sql.DataSource) new javax.naming.InitialContext().lookup("java:comp/env/jdbc/biblivre4");
-            if (ds != null) return ds.getConnection();
-        } catch (Exception ignored) {}
-        Class.forName("org.postgresql.Driver");
-        try {
-            return DriverManager.getConnection("jdbc:postgresql://localhost:5432/biblivre4", "biblivre", "abracadabra");
-        } catch (SQLException e) {
-            return DriverManager.getConnection("jdbc:postgresql://localhost:5432/biblivre4", "postgres", "abracadabra");
-        }
     }
 
     /* =========================================================
@@ -101,30 +81,77 @@
         return "?controller=capa&amp;id=" + recordId + "&amp;v=" + versao;
     }
 
-    private boolean isDisponivel(Connection conn, String schema, int recordId) {
-        if (conn == null || recordId <= 0) return true;
-        PreparedStatement ps = null;
+    /* =========================================================
+       FAIXA ETÁRIA DOS LIVROS (filtro "1º ao 5º" / "6º em diante")
+       =========================================================
+       Não depende de catalogação extra: olha QUEM levou cada livro nos
+       últimos 2 anos. Se 30% ou mais dos empréstimos foram de turmas do
+       1º ao 5º ano, o livro entra em "f1"; idem para 6º em diante ("f2").
+       Livro sem histórico aparece nas duas faixas. */
+    private Map<Integer, String> carregarFaixasLivros(Connection conn, String schema, String sqlTurmaLeitor) {
+        Map<Integer, int[]> contagem = new HashMap<Integer, int[]>();
+        Statement st = null;
         ResultSet rs = null;
         try {
-            String sql = "SELECT COUNT(h.id) AS total_holdings, " +
-                         "COUNT(l.id) AS total_lent " +
-                         "FROM " + schema + ".biblio_holdings h " +
-                         "LEFT JOIN " + schema + ".lendings l ON h.id = l.holding_id AND l.return_date IS NULL " +
-                         "WHERE h.record_id = ?";
-            ps = conn.prepareStatement(sql);
-            ps.setInt(1, recordId);
-            rs = ps.executeQuery();
-            if (rs.next()) {
-                int total = rs.getInt("total_holdings");
-                int emprestados = rs.getInt("total_lent");
-                return (total > emprestados);
+            st = conn.createStatement();
+            rs = st.executeQuery(
+                "SELECT x.record_id, x.turma, COUNT(*) AS total FROM (" +
+                "  SELECT bh.record_id, " + sqlTurmaLeitor + " AS turma " +
+                "  FROM " + schema + ".lendings l " +
+                "  JOIN " + schema + ".biblio_holdings bh ON bh.id = l.holding_id " +
+                "  WHERE l.created >= CURRENT_DATE - INTERVAL '2 years'" +
+                ") x WHERE x.turma IS NOT NULL GROUP BY x.record_id, x.turma");
+            while (rs.next()) {
+                String faixa = bibFaixaDaTurma(rs.getString("turma"));
+                if (faixa == null) continue;
+                int[] c = contagem.get(rs.getInt("record_id"));
+                if (c == null) { c = new int[2]; contagem.put(rs.getInt("record_id"), c); }
+                c["f1".equals(faixa) ? 0 : 1] += rs.getInt("total");
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            bibLog(getServletContext(), "faixas dos livros", e);
         } finally {
             closeQuietly(rs);
-            closeQuietly(ps);
+            closeQuietly(st);
         }
-        return true;
+        Map<Integer, String> faixas = new HashMap<Integer, String>();
+        for (Map.Entry<Integer, int[]> e : contagem.entrySet()) {
+            int f1 = e.getValue()[0], f2 = e.getValue()[1], total = f1 + f2;
+            if (total == 0) continue;
+            StringBuilder sb = new StringBuilder();
+            if (f1 * 10 >= total * 3) sb.append("f1");
+            if (f2 * 10 >= total * 3) sb.append(sb.length() > 0 ? " f2" : "f2");
+            faixas.put(e.getKey(), sb.toString());
+        }
+        return faixas;
+    }
+
+    private String faixaLivro(Map<Integer, String> faixas, int recordId) {
+        String f = faixas.get(recordId);
+        return f == null ? "" : f;
+    }
+
+    /* Disponibilidade de TODOS os registros numa consulta só (antes era
+       uma consulta por livro exibido). Registro fora do mapa = sem
+       exemplares emprestados → disponível. */
+    private Set<Integer> carregarIndisponiveis(Connection conn, String schema) {
+        Set<Integer> indisponiveis = new HashSet<Integer>();
+        Statement st = null;
+        ResultSet rs = null;
+        try {
+            st = conn.createStatement();
+            rs = st.executeQuery(
+                "SELECT h.record_id FROM " + schema + ".biblio_holdings h " +
+                "LEFT JOIN " + schema + ".lendings l ON l.holding_id = h.id AND l.return_date IS NULL " +
+                "GROUP BY h.record_id HAVING COUNT(h.id) <= COUNT(l.id)");
+            while (rs.next()) indisponiveis.add(rs.getInt(1));
+        } catch (Exception e) {
+            bibLog(getServletContext(), "disponibilidade", e);
+        } finally {
+            closeQuietly(rs);
+            closeQuietly(st);
+        }
+        return indisponiveis;
     }
 
     /* =========================================================
@@ -137,18 +164,6 @@
        Janela: últimos 30 dias corridos — muda sozinho dia a dia.
        Sempre devolve "maxPalavras" pills: completa com uma lista de
        reserva se faltar dado real, sem repetir o que já veio do banco. */
-    private static final Set<String> STOPWORDS_ASSUNTO = new HashSet<String>(Arrays.asList(
-        "literatura", "literaturas", "infantojuvenil", "infantojuvenis", "infantil", "infantis",
-        "juvenil", "juvenis", "brasileira", "brasileiro", "brasileiros", "brasileiras",
-        "ficcao", "ficcoes", "contos", "conto", "historia", "historias", "narrativa", "narrativas",
-        "colecao", "colecoes", "edicao", "edicoes", "texto", "textos", "obra", "obras",
-        "infancia", "criancas", "crianca", "imaginacao", "traducao", "traducoes",
-        "seculo", "seculos", "geral", "nacional", "estrangeira", "estrangeiro",
-        "portugues", "portuguesa", "lingua", "linguas", "escrita", "leitura", "leituras",
-        "critica", "criticas", "ensaio", "ensaios", "biografia", "biografias",
-        "popular", "populares", "tradicional", "tradicionais", "moderna", "moderno",
-        "classica", "classico", "americana", "americano"
-    ));
 
     private static final String[] ASSUNTOS_FALLBACK = {
         "aventura", "fantasia", "animais", "magia", "amizade", "misterio"
@@ -190,7 +205,7 @@
                     for (String p : palavras) {
                         String pLower = p.toLowerCase();
                         if (pLower.length() < 4) continue;
-                        if (STOPWORDS_ASSUNTO.contains(pLower)) continue;
+                        if (BIB_STOPWORDS_ASSUNTO.contains(pLower)) continue;
                         Integer atual = frequencia.get(pLower);
                         frequencia.put(pLower, atual == null ? 1 : atual + 1);
                     }
@@ -597,10 +612,6 @@
             background: linear-gradient(135deg, var(--gold-1) 0%, var(--gold-2) 100%);
             box-shadow: 0 4px 14px rgba(217, 119, 6, 0.32);
         }
-        .library-section-overdue .library-section-icon {
-            background: linear-gradient(135deg, #dc2626 0%, var(--burgundy) 100%);
-            box-shadow: 0 4px 14px rgba(220, 38, 38, 0.32);
-        }
 
         .library-section-title {
             font-family: 'Lora', Georgia, serif;
@@ -634,10 +645,6 @@
         .section-suggestions .library-section-badge { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
         .section-new .library-section-badge { background: #f0fdfa; color: #0f766e; border-color: #99f6e4; }
         .section-club .library-section-badge { background: #fffbeb; color: #b45309; border-color: #fde68a; }
-        .library-section-overdue { background: #fffdfd; border-color: #fecaca; }
-        .library-section-overdue .library-section-header { background: #fff5f5; border-bottom-color: #fee2e2; }
-        .library-section-overdue .library-section-title { color: var(--burgundy); }
-        .library-section-overdue .library-section-badge { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
 
         /* ---------- Filtros temáticos ---------- */
         .library-theme-filters {
@@ -785,7 +792,7 @@
             font-size: 14px;
             letter-spacing: 0.4em;
             opacity: 0.75;
-            margin-top: 6px;
+            margin-top: 24px; /* abaixo do selo Disponível/Emprestado */
         }
         .styled-cover-title {
             font-family: 'Lora', Georgia, serif;
@@ -963,6 +970,7 @@
             text-transform: uppercase;
             color: var(--ink-muted);
         }
+        .podium-badge:empty { display: none; }
         .podium-1 .podium-badge { color: var(--gold-2); }
         .podium-2 .podium-badge { color: #64748b; }
         .podium-3 .podium-badge { color: #ea580c; }
@@ -1024,70 +1032,46 @@
         .podium-1 .reader-count { color: var(--gold-2); }
 
         /* =========================================================
-           ATRASOS
+           FILTRO POR FAIXA (hero)
            ========================================================= */
-        .overdue-card {
-            flex: 0 0 var(--overdue-w, 210px);
-            width: var(--overdue-w, 210px);
-            background: #ffffff;
-            border: 1px solid #fecaca;
-            border-radius: 14px;
-            padding: 12px;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-        .overdue-card:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(153, 27, 27, 0.1); }
-        .overdue-cover {
-            width: 100%;
-            aspect-ratio: 210 / 155;
-            border-radius: 8px;
-            overflow: hidden;
-            background: #fef2f2;
-            margin-bottom: 12px;
+        [hidden] { display: none !important; }
+        .hero-faixa {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 18px;
             position: relative;
-            box-shadow: 0 4px 12px rgba(153, 27, 27, 0.12);
+            z-index: 1;
         }
-        .overdue-cover::after {
-            content: '';
-            position: absolute;
-            left: 0; top: 0; bottom: 0;
-            width: 8px;
-            background: linear-gradient(to right, rgba(0,0,0,0.28), rgba(255,255,255,0.12) 60%, transparent);
-            pointer-events: none;
+        .hero-faixa-label {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: #cbd5e1;
+            margin-right: 4px;
         }
-        .overdue-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
-        .overdue-book {
-            font-family: 'Lora', Georgia, serif;
+        .faixa-btn {
+            font-family: inherit;
             font-size: 12px;
             font-weight: 600;
-            color: var(--burgundy);
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-            line-height: 1.4;
+            min-height: 36px;
+            padding: 8px 16px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            background: transparent;
+            color: #e2e8f0;
+            cursor: pointer;
+            transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
         }
-        .overdue-student {
-            font-size: 11px;
-            color: var(--ink-2);
-            font-weight: 600;
-            margin-top: 8px;
+        .faixa-btn:hover { border-color: rgba(255, 255, 255, 0.5); }
+        .faixa-btn.active {
+            background: #ffffff;
+            border-color: #ffffff;
+            color: var(--ink);
         }
-        .overdue-meta {
-            font-size: 10px;
-            color: var(--ink-muted);
-            margin-top: 4px;
-            letter-spacing: 0.02em;
-        }
-        .overdue-days {
-            margin-top: 10px;
-            padding-top: 9px;
-            border-top: 1px solid #fee2e2;
-            font-size: 11px;
-            font-weight: 800;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            color: #dc2626;
-        }
+        .faixa-vazia { flex: 1 0 100%; }
 
         /* ---------- Estado vazio ---------- */
         .no-results {
@@ -1110,9 +1094,7 @@
             .classroom-card,
             .classroom-card:hover,
             .reader-card,
-            .reader-card:hover,
-            .overdue-card,
-            .overdue-card:hover {
+            .reader-card:hover {
                 transform: none !important;
                 transition: none !important;
             }
@@ -1151,8 +1133,7 @@
         @media (hover: none) {
             .library-book-card:hover,
             .classroom-card:hover,
-            .reader-card:hover,
-            .overdue-card:hover { transform: none; }
+            .reader-card:hover { transform: none; }
         }
 
         /* =========================================================
@@ -1163,7 +1144,7 @@
         }
 
         @media screen and (max-width: 900px) {
-            .library-dashboard { --card-w: 156px; --reader-w: 200px; --overdue-w: 196px; }
+            .library-dashboard { --card-w: 156px; --reader-w: 200px; }
             .hero-top-row { margin-bottom: 22px; }
             .library-section { border-radius: 16px; margin-bottom: 22px; }
             .library-section-header { padding: 18px 20px; }
@@ -1176,7 +1157,6 @@
             .library-dashboard {
                 --card-w: clamp(128px, 38vw, 150px);
                 --reader-w: clamp(170px, 62vw, 200px);
-                --overdue-w: clamp(170px, 62vw, 196px);
                 padding-bottom: 36px;
                 font-size: 13px;
             }
@@ -1190,6 +1170,9 @@
             .hero-search-icon { margin-right: 8px; }
             .hero-search-btn { padding: 10px 16px; }
             .hero-surprise-btn { width: 100%; justify-content: center; }
+            .hero-faixa { margin-top: 14px; }
+            .hero-faixa-label { flex: 1 0 100%; margin-bottom: 2px; }
+            .faixa-btn { flex: 1 1 auto; padding: 8px 10px; }
             .hero-trending-topics {
                 flex-wrap: nowrap;
                 overflow-x: auto;
@@ -1271,7 +1254,7 @@
         }
 
         function renderizarCapasNaoCadastradas() {
-            var containers = document.querySelectorAll('.library-book-cover, .overdue-cover');
+            var containers = document.querySelectorAll('.library-book-cover');
             for (var i = 0; i < containers.length; i++) {
                 var el = containers[i];
                 var img = el.querySelector('img');
@@ -1378,9 +1361,106 @@
             for (var i = 0; i < trilhos.length; i++) atualizarCarrossel(trilhos[i]);
         }
 
+        /* ---------- Filtro "Livros para": todos / 1º ao 5º / 6º em diante ---------- */
+        var FAIXA_CHAVE = 'biblioteca.faixa';
+
+        function combinaFaixa(el, faixa) {
+            if (faixa === 'todas') return true;
+            var f = el.getAttribute('data-faixa') || '';
+            return f === '' || (' ' + f + ' ').indexOf(' ' + faixa + ' ') !== -1;
+        }
+
+        function aplicarFaixa(faixa) {
+            if (faixa !== 'f1' && faixa !== 'f2') faixa = 'todas';
+            try { localStorage.setItem(FAIXA_CHAVE, faixa); } catch (e) {}
+
+            var btns = document.querySelectorAll('.faixa-btn');
+            for (var b = 0; b < btns.length; b++) {
+                var ativo = btns[b].getAttribute('data-faixa') === faixa;
+                btns[b].className = ativo ? 'faixa-btn active' : 'faixa-btn';
+                btns[b].setAttribute('aria-pressed', ativo ? 'true' : 'false');
+            }
+
+            // vitrines de livros
+            var trilhos = document.querySelectorAll('.library-books-scroll');
+            for (var t = 0; t < trilhos.length; t++) {
+                var trilho = trilhos[t];
+                if (trilho.id === 'ranking-leitores') continue;
+                var cards = trilho.querySelectorAll('.library-book-card');
+                if (!cards.length) continue;
+                // o servidor manda livros de sobra; cada vitrine mostra só os N
+                // primeiros da faixa escolhida (data-limite)
+                var limite = parseInt(trilho.getAttribute('data-limite') || '0', 10) || cards.length;
+                var visiveis = 0;
+                for (var c = 0; c < cards.length; c++) {
+                    var ok = combinaFaixa(cards[c], faixa) && visiveis < limite;
+                    cards[c].hidden = !ok;
+                    if (ok) visiveis++;
+                }
+                var aviso = trilho.querySelector('.faixa-vazia');
+                if (!visiveis) {
+                    if (!aviso) {
+                        aviso = document.createElement('div');
+                        aviso.className = 'no-results faixa-vazia';
+                        aviso.textContent = 'Nenhum livro desta vitrine para essa faixa ainda.';
+                        trilho.appendChild(aviso);
+                    }
+                    aviso.hidden = false;
+                } else if (aviso) {
+                    aviso.hidden = true;
+                }
+                trilho.scrollLeft = 0;
+            }
+
+            reordenarRanking('#ranking-turmas', '.classroom-card', faixa, 6, 'rank-');
+            reordenarRanking('#ranking-leitores', '.reader-card', faixa, 10, 'podium-');
+            atualizarCarrosseis();
+        }
+
+        /* Mostra só os itens da faixa e refaz 1º, 2º, 3º... e as barras */
+        function reordenarRanking(seletor, itemSel, faixa, limite, prefixo) {
+            var box = document.querySelector(seletor);
+            if (!box) return;
+            var itens = box.querySelectorAll(itemSel);
+            var pos = 0, maxQtd = 0;
+            for (var i = 0; i < itens.length; i++) {
+                var el = itens[i];
+                var ok = combinaFaixa(el, faixa) && pos < limite;
+                el.hidden = !ok;
+                el.className = el.className.replace(new RegExp('\\b' + prefixo + '[1-3]\\b', 'g'), '').replace(/\s+/g, ' ').trim();
+                if (!ok) continue;
+                pos++;
+                if (pos <= 3) el.className += ' ' + prefixo + pos;
+                var spans = el.querySelectorAll('.js-pos');
+                for (var s = 0; s < spans.length; s++) spans[s].textContent = pos + 'º';
+                var badge = el.querySelector('.podium-badge');
+                if (badge) badge.textContent = pos <= 3 ? pos + 'º lugar' : '';
+                var qtd = parseInt(el.getAttribute('data-qtd') || '0', 10);
+                if (pos === 1) maxQtd = qtd || 1;
+                var barra = el.querySelector('.classroom-bar-fill');
+                if (barra) barra.style.width = Math.round((qtd / maxQtd) * 100) + '%';
+            }
+            var aviso = box.querySelector('.faixa-vazia');
+            if (itens.length && !pos) {
+                if (!aviso) {
+                    aviso = document.createElement('div');
+                    aviso.className = 'no-results faixa-vazia';
+                    aviso.style.gridColumn = '1 / -1';
+                    aviso.textContent = 'Ninguém dessa faixa no ranking deste mês ainda.';
+                    box.appendChild(aviso);
+                }
+                aviso.hidden = false;
+            } else if (aviso) {
+                aviso.hidden = true;
+            }
+        }
+
         function iniciarHome() {
             renderizarCapasNaoCadastradas();
             montarCarrosseis();
+            var salva = null;
+            try { salva = localStorage.getItem(FAIXA_CHAVE); } catch (e) {}
+            aplicarFaixa(salva || 'todas');
         }
 
         if (document.readyState === 'loading') {
@@ -1408,33 +1488,13 @@ if (!req.isGlobalSchema()) {
     int hora = cal.get(Calendar.HOUR_OF_DAY);
     String saudacao = (hora >= 5 && hora < 12) ? "Bom dia" : (hora >= 12 && hora < 18) ? "Boa tarde" : "Boa noite";
 
-    boolean isLogged = false;
-    try {
-        HttpSession sess = request.getSession(false);
-        if (sess != null) {
-            Enumeration attrNames = sess.getAttributeNames();
-            while (attrNames.hasMoreElements()) {
-                String name = (String) attrNames.nextElement();
-                Object val = sess.getAttribute(name);
-                if (val != null) {
-                    String className = val.getClass().getName();
-                    if (className.indexOf("Login") != -1 || className.indexOf("User") != -1 ||
-                        name.toLowerCase().indexOf("login") != -1 || name.toLowerCase().indexOf("user") != -1) {
-                        isLogged = true;
-                        break;
-                    }
-                }
-            }
-        }
-    } catch (Throwable ignored) {}
-
     int totalObras = 0;
     int totalExemplares = 0;
     int totalLeiturasMes = 0;
     List<String> titulosParaSorteio = new ArrayList<String>();
 
     try {
-        conn = abrirConexao();
+        conn = bibConexao();
 
         Statement stMeta = null;
         ResultSet rsMeta = null;
@@ -1473,6 +1533,9 @@ if (!req.isGlobalSchema()) {
         }
 
         Map<Integer, Long> capas = carregarCapas(conn, schema);
+        Set<Integer> indisponiveis = carregarIndisponiveis(conn, schema);
+        String sqlTurmaLeitor = bibSqlTurma(conn, schema, "l.user_id");
+        Map<Integer, String> faixasLivros = carregarFaixasLivros(conn, schema, sqlTurmaLeitor);
         List<String> assuntosEmAlta = obterAssuntosEmAlta(conn, schema, 30, 6);
 %>
 
@@ -1529,6 +1592,13 @@ if (!req.isGlobalSchema()) {
             </button>
         </div>
 
+        <div class="hero-faixa" role="group" aria-label="Mostrar livros por ano escolar">
+            <span class="hero-faixa-label">Livros para</span>
+            <button type="button" class="faixa-btn active" data-faixa="todas" aria-pressed="true" onclick="aplicarFaixa('todas');">Todos</button>
+            <button type="button" class="faixa-btn" data-faixa="f1" aria-pressed="false" onclick="aplicarFaixa('f1');">1º ao 5º ano</button>
+            <button type="button" class="faixa-btn" data-faixa="f2" aria-pressed="false" onclick="aplicarFaixa('f2');">6º ano em diante</button>
+        </div>
+
         <div class="hero-trending-topics">
             <span class="hero-trending-label">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
@@ -1556,7 +1626,7 @@ if (!req.isGlobalSchema()) {
             </div>
             <div class="library-section-badge">Mais lidos</div>
         </div>
-        <div class="library-books-scroll">
+        <div class="library-books-scroll" data-limite="10">
         <%
         Statement st1 = null;
         ResultSet rs1 = null;
@@ -1568,7 +1638,7 @@ if (!req.isGlobalSchema()) {
                 "(SELECT phrase FROM " + schema + ".biblio_idx_sort WHERE record_id = top_books.record_id AND indexing_group_id = 1 LIMIT 1) AS autor " +
                 "FROM (SELECT bh.record_id, COUNT(l.id) AS total_lido FROM " + schema + ".lendings l " +
                 "JOIN " + schema + ".biblio_holdings bh ON l.holding_id = bh.id " +
-                "GROUP BY bh.record_id ORDER BY total_lido DESC LIMIT 10) AS top_books";
+                "GROUP BY bh.record_id ORDER BY total_lido DESC LIMIT 40) AS top_books";
 
             st1 = conn.createStatement();
             rs1 = st1.executeQuery(sqlMaisLidos);
@@ -1578,9 +1648,9 @@ if (!req.isGlobalSchema()) {
                 String title = rs1.getString("titulo") != null ? rs1.getString("titulo") : "Sem título";
                 String author = rs1.getString("autor") != null ? rs1.getString("autor") : "Autor desconhecido";
                 String capaUrl = urlCapa(capas, recordId);
-                boolean disp = isDisponivel(conn, schema, recordId);
+                boolean disp = !indisponiveis.contains(recordId);
         %>
-            <a class="library-book-card" href="?action=search_bibliographic#query=<%= URLEncoder.encode(title, "UTF-8") %>&material=all">
+            <a class="library-book-card" data-faixa="<%= faixaLivro(faixasLivros, recordId) %>" href="?action=search_bibliographic#query=<%= URLEncoder.encode(title, "UTF-8") %>&material=all">
                 <div class="library-book-cover" data-title="<%= StringEscapeUtils.escapeHtml4(title) %>" data-author="<%= StringEscapeUtils.escapeHtml4(author) %>">
                     <span class="status-badge <%= disp ? "status-available" : "status-lent" %>">
                         <svg width="6" height="6" viewBox="0 0 6 6" aria-hidden="true" focusable="false"><circle cx="3" cy="3" r="3" fill="currentColor"/></svg>
@@ -1678,7 +1748,7 @@ if (!req.isGlobalSchema()) {
             </div>
             <div class="library-section-badge">Recomendado</div>
         </div>
-        <div class="library-books-scroll">
+        <div class="library-books-scroll" data-limite="6">
         <%
         boolean hasCoEmprestimos = false;
         if (anchorRecordId > 0) {
@@ -1701,7 +1771,7 @@ if (!req.isGlobalSchema()) {
                     "WHERE bh2.record_id != ? " +
                     "GROUP BY bh2.record_id " +
                     "ORDER BY total_coleitores DESC " +
-                    "LIMIT 6";
+                    "LIMIT 24";
                 psCo = conn.prepareStatement(sqlCo);
                 psCo.setInt(1, anchorRecordId);
                 psCo.setInt(2, anchorRecordId);
@@ -1712,9 +1782,9 @@ if (!req.isGlobalSchema()) {
                     String title = rsCo.getString("titulo") != null ? rsCo.getString("titulo") : "Sem título";
                     String author = rsCo.getString("autor") != null ? rsCo.getString("autor") : "Autor desconhecido";
                     String capaUrl = urlCapa(capas, recordId);
-                    boolean disp = isDisponivel(conn, schema, recordId);
+                    boolean disp = !indisponiveis.contains(recordId);
         %>
-            <a class="library-book-card" href="?action=search_bibliographic#query=<%= URLEncoder.encode(title, "UTF-8") %>&material=all">
+            <a class="library-book-card" data-faixa="<%= faixaLivro(faixasLivros, recordId) %>" href="?action=search_bibliographic#query=<%= URLEncoder.encode(title, "UTF-8") %>&material=all">
                 <div class="library-book-cover" data-title="<%= StringEscapeUtils.escapeHtml4(title) %>" data-author="<%= StringEscapeUtils.escapeHtml4(author) %>">
                     <span class="status-badge <%= disp ? "status-available" : "status-lent" %>">
                         <svg width="6" height="6" viewBox="0 0 6 6" aria-hidden="true" focusable="false"><circle cx="3" cy="3" r="3" fill="currentColor"/></svg>
@@ -1760,65 +1830,72 @@ if (!req.isGlobalSchema()) {
             <div class="library-section-badge">Gincana da leitura</div>
         </div>
 
-        <div class="classrooms-grid">
+        <div class="classrooms-grid" id="ranking-turmas">
         <%
+        /* Turma = só o campo de turma do cadastro (bibSqlTurma), nunca
+           telefone ou e-mail. Grafias diferentes ("6º A", "6A") somam juntas.
+           Todas as turmas vêm do banco; o JavaScript mostra as 6 primeiras
+           da faixa escolhida e refaz as posições. */
         Statement stTurmas = null;
         ResultSet rsTurmas = null;
-        boolean hasTurmas = false;
+        Map<String, Integer> totaisTurma = new HashMap<String, Integer>();
         try {
-            String sqlTurmas =
-                "SELECT " +
-                "  uv.value AS turma, " +
-                "  COUNT(l.id) AS total_lidos " +
-                "FROM " + schema + ".lendings l " +
-                "JOIN " + schema + ".users u ON l.user_id = u.id " +
-                "JOIN " + schema + ".users_values uv ON u.id = uv.user_id " +
-                "WHERE l.created >= DATE_TRUNC('month', CURRENT_DATE) " +
-                "  AND l.created < (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month') " +
-                "  AND uv.value IS NOT NULL AND LENGTH(TRIM(uv.value)) > 0 " +
-                "  AND (uv.value ~ '^[0-9]' OR uv.value ~ '[0-9][A-Z]' OR uv.value ~* '(ano|série|serie|turma|classe)') " +
-                "GROUP BY uv.value " +
-                "ORDER BY total_lidos DESC " +
-                "LIMIT 4";
-
             stTurmas = conn.createStatement();
-            rsTurmas = stTurmas.executeQuery(sqlTurmas);
-            int rankTurma = 0;
-            int maxLidos = 1;
-
+            rsTurmas = stTurmas.executeQuery(
+                "SELECT x.turma, COUNT(*) AS total FROM (" +
+                "  SELECT " + sqlTurmaLeitor + " AS turma FROM " + schema + ".lendings l " +
+                "  WHERE l.created >= DATE_TRUNC('month', CURRENT_DATE) " +
+                "    AND l.created < (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month')" +
+                ") x WHERE x.turma IS NOT NULL GROUP BY x.turma");
             while (rsTurmas.next()) {
-                hasTurmas = true;
-                rankTurma++;
-                String turmaNome = rsTurmas.getString("turma");
-                int qtd = rsTurmas.getInt("total_lidos");
-                if (rankTurma == 1) { maxLidos = qtd > 0 ? qtd : 1; }
-                int porcentagem = (int) Math.round(((double) qtd / (double) maxLidos) * 100);
-                String cardClass = (rankTurma == 1) ? "rank-1" : (rankTurma == 2) ? "rank-2" : (rankTurma == 3) ? "rank-3" : "";
-                String posicao = rankTurma + "º";
+                String t = bibNormalizarTurma(rsTurmas.getString("turma"));
+                if (t == null) continue;
+                Integer atual = totaisTurma.get(t);
+                totaisTurma.put(t, (atual == null ? 0 : atual) + rsTurmas.getInt("total"));
+            }
+        } catch (Exception e) {
+            bibLog(getServletContext(), "desafio das turmas", e);
+        } finally {
+            closeQuietly(rsTurmas);
+            closeQuietly(stTurmas);
+        }
+
+        List<Map.Entry<String, Integer>> rankingTurmas = new ArrayList<Map.Entry<String, Integer>>(totaisTurma.entrySet());
+        Collections.sort(rankingTurmas, new Comparator<Map.Entry<String, Integer>>() {
+            public int compare(Map.Entry<String, Integer> a, Map.Entry<String, Integer> b) {
+                int d = b.getValue() - a.getValue();
+                return d != 0 ? d : a.getKey().compareTo(b.getKey());
+            }
+        });
+        int maxLidos = rankingTurmas.isEmpty() ? 1 : Math.max(1, rankingTurmas.get(0).getValue());
+        int rankTurma = 0;
+        for (Map.Entry<String, Integer> eTurma : rankingTurmas) {
+            rankTurma++;
+            String turmaNome = eTurma.getKey();
+            int qtd = eTurma.getValue();
+            String faixaTurma = bibFaixaDaTurma(turmaNome);
+            int porcentagem = (int) Math.round(((double) qtd / (double) maxLidos) * 100);
+            String cardClass = (rankTurma == 1) ? "rank-1" : (rankTurma == 2) ? "rank-2" : (rankTurma == 3) ? "rank-3" : "";
         %>
-            <div class="classroom-card <%= cardClass %>">
+            <div class="classroom-card <%= cardClass %>" data-faixa="<%= faixaTurma == null ? "" : faixaTurma %>" data-qtd="<%= qtd %>"<%= rankTurma > 6 ? " hidden" : "" %>>
                 <div class="classroom-header">
                     <div class="classroom-name"><%= StringEscapeUtils.escapeHtml4(turmaNome) %></div>
                     <div class="classroom-medal">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
-                        <%= posicao %>
+                        <span class="js-pos"><%= rankTurma %>º</span>
                     </div>
                 </div>
                 <div class="classroom-bar-container">
                     <div class="classroom-bar-fill" style="width: <%= porcentagem %>%;"></div>
                 </div>
                 <div class="classroom-footer">
-                    <span><%= posicao %> lugar no ranking</span>
+                    <span><span class="js-pos"><%= rankTurma %>º</span> lugar no ranking</span>
                     <strong><%= qtd %> <%= qtd == 1 ? "livro" : "livros" %></strong>
                 </div>
             </div>
-        <%  }
-        } catch (Exception e) {
-        } finally {
-            closeQuietly(rsTurmas);
-            closeQuietly(stTurmas);
+        <%
         }
-        if (!hasTurmas) {
+        if (rankingTurmas.isEmpty()) {
         %>
             <div class="no-results" style="grid-column: 1 / -1;">
                 Registre empréstimos para os alunos com a turma cadastrada para ativar o Desafio das Turmas.
@@ -1883,7 +1960,7 @@ if (!req.isGlobalSchema()) {
             ResultSet rsTheme = null;
             boolean hasThemeBooks = false;
         %>
-            <div class="library-books-scroll theme-shelf" id="shelf-<%= themeKey %>" style="<%= isFirst ? "" : "display:none;" %>">
+            <div class="library-books-scroll theme-shelf" data-limite="10" id="shelf-<%= themeKey %>" style="<%= isFirst ? "" : "display:none;" %>">
             <%
             try {
                 String sqlTheme;
@@ -1893,7 +1970,7 @@ if (!req.isGlobalSchema()) {
                         "(SELECT phrase FROM " + schema + ".biblio_idx_sort WHERE record_id = br.id AND indexing_group_id = 3 LIMIT 1) AS titulo, " +
                         "(SELECT phrase FROM " + schema + ".biblio_idx_sort WHERE record_id = br.id AND indexing_group_id = 1 LIMIT 1) AS autor " +
                         "FROM " + schema + ".biblio_records br " +
-                        "WHERE br.id IN (SELECT id FROM " + schema + ".biblio_records ORDER BY RANDOM() LIMIT 10)";
+                        "WHERE br.id IN (SELECT id FROM " + schema + ".biblio_records ORDER BY RANDOM() LIMIT 30)";
                 } else {
                     sqlTheme =
                         "SELECT matched.record_id, " +
@@ -1903,7 +1980,7 @@ if (!req.isGlobalSchema()) {
                         "   SELECT s.record_id FROM " + schema + ".biblio_idx_sort s " +
                         "   WHERE s.phrase ~* '" + regex + "' " +
                         "   GROUP BY s.record_id " +
-                        "   ORDER BY RANDOM() LIMIT 10" +
+                        "   ORDER BY RANDOM() LIMIT 30" +
                         ") matched";
                 }
 
@@ -1915,9 +1992,9 @@ if (!req.isGlobalSchema()) {
                     String title = rsTheme.getString("titulo") != null ? rsTheme.getString("titulo") : "Sem título";
                     String author = rsTheme.getString("autor") != null ? rsTheme.getString("autor") : "Autor desconhecido";
                     String capaUrl = urlCapa(capas, recordId);
-                    boolean disp = isDisponivel(conn, schema, recordId);
+                    boolean disp = !indisponiveis.contains(recordId);
             %>
-                <a class="library-book-card" href="?action=search_bibliographic#query=<%= URLEncoder.encode(title, "UTF-8") %>&material=all">
+                <a class="library-book-card" data-faixa="<%= faixaLivro(faixasLivros, recordId) %>" href="?action=search_bibliographic#query=<%= URLEncoder.encode(title, "UTF-8") %>&material=all">
                     <div class="library-book-cover" data-title="<%= StringEscapeUtils.escapeHtml4(title) %>" data-author="<%= StringEscapeUtils.escapeHtml4(author) %>">
                         <span class="status-badge <%= disp ? "status-available" : "status-lent" %>">
                             <svg width="6" height="6" viewBox="0 0 6 6" aria-hidden="true" focusable="false"><circle cx="3" cy="3" r="3" fill="currentColor"/></svg>
@@ -1961,7 +2038,7 @@ if (!req.isGlobalSchema()) {
             </div>
             <div class="library-section-badge">Recém-adicionados</div>
         </div>
-        <div class="library-books-scroll">
+        <div class="library-books-scroll" data-limite="10">
         <%
         Statement st3 = null;
         ResultSet rs3 = null;
@@ -1972,7 +2049,7 @@ if (!req.isGlobalSchema()) {
                 "(SELECT phrase FROM " + schema + ".biblio_idx_sort WHERE record_id = top_books.record_id AND indexing_group_id = 3 LIMIT 1) AS titulo, " +
                 "(SELECT phrase FROM " + schema + ".biblio_idx_sort WHERE record_id = top_books.record_id AND indexing_group_id = 1 LIMIT 1) AS autor " +
                 "FROM (SELECT record_id, TO_CHAR(MIN(created), 'DD/MM/YYYY') AS data_cadastro FROM " + schema + ".biblio_holdings " +
-                "WHERE record_id IS NOT NULL GROUP BY record_id ORDER BY MIN(created) DESC LIMIT 10) AS top_books";
+                "WHERE record_id IS NOT NULL GROUP BY record_id ORDER BY MIN(created) DESC LIMIT 40) AS top_books";
 
             st3 = conn.createStatement();
             rs3 = st3.executeQuery(sqlNovidades);
@@ -1983,9 +2060,9 @@ if (!req.isGlobalSchema()) {
                 String author = rs3.getString("autor") != null ? rs3.getString("autor") : "Autor desconhecido";
                 String dataCadastro = rs3.getString("data_cadastro") != null ? rs3.getString("data_cadastro") : "Recente";
                 String capaUrl = urlCapa(capas, recordId);
-                boolean disp = isDisponivel(conn, schema, recordId);
+                boolean disp = !indisponiveis.contains(recordId);
         %>
-            <a class="library-book-card" href="?action=search_bibliographic#query=<%= URLEncoder.encode(title, "UTF-8") %>&material=all">
+            <a class="library-book-card" data-faixa="<%= faixaLivro(faixasLivros, recordId) %>" href="?action=search_bibliographic#query=<%= URLEncoder.encode(title, "UTF-8") %>&material=all">
                 <div class="library-book-cover" data-title="<%= StringEscapeUtils.escapeHtml4(title) %>" data-author="<%= StringEscapeUtils.escapeHtml4(author) %>">
                     <span class="status-badge <%= disp ? "status-available" : "status-lent" %>">
                         <svg width="6" height="6" viewBox="0 0 6 6" aria-hidden="true" focusable="false"><circle cx="3" cy="3" r="3" fill="currentColor"/></svg>
@@ -2026,124 +2103,53 @@ if (!req.isGlobalSchema()) {
             </div>
             <div class="library-section-badge">Ranking individual</div>
         </div>
-        <div class="library-books-scroll">
+        <div class="library-books-scroll" id="ranking-leitores">
         <%
-        Statement st4 = null;
+        /* Nome abreviado ("Ana C.") na página pública — nada de nome
+           completo de aluno. A lista completa fica no painel de relatórios. */
+        PreparedStatement ps4 = null;
         ResultSet rs4 = null;
         boolean hasLeitores = false;
         try {
-            String sqlLeitoresMes =
-                "SELECT u.name AS aluno, " +
-                "COALESCE((SELECT uv.value FROM " + schema + ".users_values uv " +
-                "          WHERE uv.user_id = u.id " +
-                "          AND (uv.value ~ '^[0-9]' OR uv.value LIKE '%@%' OR uv.value ~ '[0-9][A-Z]') " +
-                "          LIMIT 1), 'Aluno') AS turma, " +
-                "COUNT(l.id) AS total_lido " +
+            ps4 = conn.prepareStatement(
+                "SELECT u.name AS aluno, " + bibSqlTurma(conn, schema, "u.id") + " AS turma, COUNT(l.id) AS total_lido " +
                 "FROM " + schema + ".users u " +
                 "JOIN " + schema + ".lendings l ON u.id = l.user_id " +
                 "WHERE l.created >= DATE_TRUNC('month', CURRENT_DATE) " +
                 "  AND l.created < (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month') " +
                 "GROUP BY u.id, u.name " +
-                "ORDER BY total_lido DESC " +
-                "LIMIT 10";
-
-            st4 = conn.createStatement();
-            rs4 = st4.executeQuery(sqlLeitoresMes);
+                "ORDER BY total_lido DESC, u.name " +
+                "LIMIT 30");
+            rs4 = ps4.executeQuery();
             int rank = 0;
             while (rs4.next()) {
                 hasLeitores = true;
                 rank++;
-                String nomeCompleto = rs4.getString("aluno") != null ? rs4.getString("aluno") : "Aluno desconhecido";
-                String turma = rs4.getString("turma");
+                String nomeCurto = bibNomeCurto(rs4.getString("aluno"));
+                String turma = bibNormalizarTurma(rs4.getString("turma"));
+                String faixaLeitor = bibFaixaDaTurma(turma);
                 int qtdLivros = rs4.getInt("total_lido");
                 String podiumClass = (rank == 1) ? "podium-1" : (rank == 2) ? "podium-2" : (rank == 3) ? "podium-3" : "";
-                String badge = (rank <= 3) ? (rank + "º lugar") : "";
         %>
-            <div class="reader-card <%= podiumClass %>">
-                <% if (!badge.isEmpty()) { %><span class="podium-badge"><%= badge %></span><% } %>
-                <div class="reader-avatar" aria-hidden="true"><%= getIniciais(nomeCompleto) %></div>
-                <div class="reader-name" title="<%= StringEscapeUtils.escapeHtml4(nomeCompleto) %>"><%= StringEscapeUtils.escapeHtml4(getNomeCurto(nomeCompleto)) %></div>
-                <div class="reader-class">Turma: <%= StringEscapeUtils.escapeHtml4(turma) %></div>
+            <div class="reader-card <%= podiumClass %>" data-faixa="<%= faixaLeitor == null ? "" : faixaLeitor %>"<%= rank > 10 ? " hidden" : "" %>>
+                <span class="podium-badge"><%= rank <= 3 ? rank + "º lugar" : "" %></span>
+                <div class="reader-avatar" aria-hidden="true"><%= StringEscapeUtils.escapeHtml4(getIniciais(nomeCurto)) %></div>
+                <div class="reader-name"><%= StringEscapeUtils.escapeHtml4(nomeCurto) %></div>
+                <div class="reader-class"><%= turma != null ? "Turma " + StringEscapeUtils.escapeHtml4(turma) : "&nbsp;" %></div>
                 <div class="reader-count"><%= qtdLivros %> <%= qtdLivros == 1 ? "livro lido" : "livros lidos" %></div>
             </div>
         <%  }
         } catch (Exception e) {
+            bibLog(getServletContext(), "clube da leitura", e);
         } finally {
             closeQuietly(rs4);
-            closeQuietly(st4);
+            closeQuietly(ps4);
         }
         if (!hasLeitores) { %><div class="no-results">Nenhum empréstimo registrado em <%= mesAtual %> ainda.</div><% }
         %>
         </div>
     </div>
 
-    <!-- =========================================================
-         6. ATRASOS (somente logados)
-         ========================================================= -->
-    <% if (isLogged) { %>
-    <div class="library-section library-section-overdue">
-        <div class="library-section-header">
-            <div class="library-section-title-area">
-                <div class="library-section-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-                </div>
-                <div>
-                    <h2 class="library-section-title">Devoluções em atraso</h2>
-                    <div class="library-section-subtitle">Empréstimos que ultrapassaram o prazo previsto de devolução</div>
-                </div>
-            </div>
-            <div class="library-section-badge">Administrativo</div>
-        </div>
-        <div class="library-books-scroll">
-        <%
-        Statement st5 = null;
-        ResultSet rs5 = null;
-        boolean hasAtrasados = false;
-        try {
-            String sqlAtrasados =
-                "SELECT u.name AS aluno, " +
-                "COALESCE((SELECT uv.value FROM " + schema + ".users_values uv WHERE uv.user_id = u.id AND (uv.value ~ '^[0-9]' OR uv.value ~ '[0-9][A-Z]') LIMIT 1), 'Sem turma') AS turma, " +
-                "bh.record_id, " +
-                "TO_CHAR(l.expected_return_date, 'DD/MM/YYYY') AS prazo, " +
-                "(CURRENT_DATE - l.expected_return_date::date) AS dias_atraso, " +
-                "(SELECT phrase FROM " + schema + ".biblio_idx_sort WHERE record_id = bh.record_id AND indexing_group_id = 3 LIMIT 1) AS livro " +
-                "FROM " + schema + ".lendings l " +
-                "JOIN " + schema + ".users u ON u.id = l.user_id " +
-                "JOIN " + schema + ".biblio_holdings bh ON l.holding_id = bh.id " +
-                "WHERE l.return_date IS NULL AND l.expected_return_date < CURRENT_DATE " +
-                "ORDER BY dias_atraso DESC LIMIT 10";
-
-            st5 = conn.createStatement();
-            rs5 = st5.executeQuery(sqlAtrasados);
-            while (rs5.next()) {
-                hasAtrasados = true;
-                int recordId = rs5.getInt("record_id");
-                String aluno = rs5.getString("aluno") != null ? rs5.getString("aluno") : "Desconhecido";
-                String livro = rs5.getString("livro") != null ? rs5.getString("livro") : "Livro sem título";
-                String capaUrl = urlCapa(capas, recordId);
-        %>
-            <div class="overdue-card">
-                <div class="overdue-cover" data-title="<%= StringEscapeUtils.escapeHtml4(livro) %>" data-author="">
-                    <% if (capaUrl != null) { %>
-                        <img src="<%= capaUrl %>" alt="Capa de <%= StringEscapeUtils.escapeHtml4(livro) %>" loading="lazy" decoding="async" onerror="handleImgError(this)" />
-                    <% } %>
-                </div>
-                <div class="overdue-book" title="<%= StringEscapeUtils.escapeHtml4(livro) %>"><%= StringEscapeUtils.escapeHtml4(livro) %></div>
-                <div class="overdue-student"><%= StringEscapeUtils.escapeHtml4(getNomeCurto(aluno)) %></div>
-                <div class="overdue-meta"><%= StringEscapeUtils.escapeHtml4(rs5.getString("turma")) %> · venceu em <%= rs5.getString("prazo") %></div>
-                <div class="overdue-days"><%= rs5.getInt("dias_atraso") %> dias de atraso</div>
-            </div>
-        <%  }
-        } catch (Exception e) {
-        } finally {
-            closeQuietly(rs5);
-            closeQuietly(st5);
-        }
-        if (!hasAtrasados) { %><div class="no-results" style="color:#15803d; font-style: normal;">Nenhum exemplar em atraso no momento.</div><% }
-        %>
-        </div>
-    </div>
-    <% } %>
 
 </div>
 

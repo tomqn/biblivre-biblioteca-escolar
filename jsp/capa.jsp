@@ -1,13 +1,12 @@
 <%@page contentType="text/plain" pageEncoding="UTF-8" trimDirectiveWhitespaces="true"%>
 <%@page import="java.sql.*"%>
 <%@page import="java.io.*"%>
-<%@page import="javax.naming.InitialContext"%>
-<%@page import="javax.sql.DataSource"%>
 <%@page import="javax.imageio.ImageIO"%>
 <%@page import="java.awt.image.BufferedImage"%>
 <%@page import="org.apache.commons.codec.binary.Base64"%>
 <%@page import="biblivre.core.ExtendedRequest"%>
 <%@page import="biblivre.core.auth.AuthorizationPoints"%>
+<%@ include file="/jsp/inc/biblioteca.jspf" %>
 <%!
     /* =================================================================
        capa.jsp — capa própria de cada registro bibliográfico
@@ -27,20 +26,6 @@
        ================================================================= */
 
     private static final int TAMANHO_MAXIMO = 3 * 1024 * 1024; // 3 MB já decodificado
-
-    private Connection abrirConexao() throws Exception {
-        try {
-            DataSource ds = (DataSource) new InitialContext().lookup("java:comp/env/jdbc/biblivre4");
-            if (ds != null) return ds.getConnection();
-        } catch (Exception ignored) {}
-        // Fallback: conexão direta (mesmas credenciais padrão do instalador do Biblivre)
-        Class.forName("org.postgresql.Driver");
-        try {
-            return DriverManager.getConnection("jdbc:postgresql://localhost:5432/biblivre4", "biblivre", "abracadabra");
-        } catch (SQLException e) {
-            return DriverManager.getConnection("jdbc:postgresql://localhost:5432/biblivre4", "postgres", "abracadabra");
-        }
-    }
 
     private void fechar(Object o) {
         if (o == null) return;
@@ -128,7 +113,7 @@
     ResultSet rs = null;
 
     try {
-        conn = abrirConexao();
+        conn = bibConexao(); // pool do Biblivre, sem senha no código
 
         // ---------------------------------------------------------------
         // ESCRITA (salvar / remover) — só quem pode salvar catalogação

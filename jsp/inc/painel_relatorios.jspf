@@ -1,0 +1,790 @@
+<%@page pageEncoding="UTF-8"%>
+<%!
+    /* =================================================================
+       painel_relatorios.jspf — Painel da biblioteca (relatórios
+       quantitativos), incluído no topo de administration/reports.jsp.
+       Precisa de /jsp/inc/biblioteca.jspf incluído antes.
+       ================================================================= */
+
+    private String rpEsc(String s) {
+        return s == null ? "" : org.apache.commons.lang3.StringEscapeUtils.escapeHtml4(s);
+    }
+
+    private String rpNum(long n) {
+        return java.text.NumberFormat.getIntegerInstance(new java.util.Locale("pt", "BR")).format(n);
+    }
+
+    private String rpDec(double n) {
+        java.text.DecimalFormat f = new java.text.DecimalFormat("0.0", new java.text.DecimalFormatSymbols(new java.util.Locale("pt", "BR")));
+        return f.format(n);
+    }
+
+    private String rpPct(double n) {
+        return Math.round(n) + "%";
+    }
+
+    private String rpData(java.util.Date d) {
+        return d == null ? "" : new java.text.SimpleDateFormat("dd/MM/yyyy").format(d);
+    }
+
+    private String rpIso(java.util.Date d) {
+        return new java.text.SimpleDateFormat("yyyy-MM-dd").format(d);
+    }
+
+    private java.util.Date rpParseData(String s) {
+        if (s == null || !s.matches("\\d{4}-\\d{2}-\\d{2}")) return null;
+        try {
+            java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd");
+            f.setLenient(false);
+            return f.parse(s);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private java.util.Calendar rpHoje() {
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        c.set(java.util.Calendar.HOUR_OF_DAY, 0);
+        c.set(java.util.Calendar.MINUTE, 0);
+        c.set(java.util.Calendar.SECOND, 0);
+        c.set(java.util.Calendar.MILLISECOND, 0);
+        return c;
+    }
+
+    private static final String[] RP_MESES = {"jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"};
+%>
+<%
+    // =====================================================================
+    // Parâmetros: período e faixa
+    // =====================================================================
+    String rpSchema = null;
+    try { rpSchema = ((biblivre.core.ExtendedRequest) request).getSchema(); } catch (Throwable ignored) {}
+    if (rpSchema == null) rpSchema = (String) request.getAttribute("schema");
+    boolean rpPode = bibSchemaValido(rpSchema) && bibPodeVerRelatorios(request, rpSchema);
+
+    String rpPeriodo = request.getParameter("rp_periodo");
+    if (rpPeriodo == null || !rpPeriodo.matches("mes|mes_anterior|ano|12m|personalizado")) rpPeriodo = "ano";
+    String rpFaixa = request.getParameter("rp_faixa");
+    if (rpFaixa == null || !rpFaixa.matches("f1|f2")) rpFaixa = "todas";
+
+    java.util.Calendar rpIni = rpHoje();
+    java.util.Calendar rpFim = rpHoje();
+    if ("mes".equals(rpPeriodo)) {
+        rpIni.set(java.util.Calendar.DAY_OF_MONTH, 1);
+    } else if ("mes_anterior".equals(rpPeriodo)) {
+        rpIni.set(java.util.Calendar.DAY_OF_MONTH, 1);
+        rpIni.add(java.util.Calendar.MONTH, -1);
+        rpFim.set(java.util.Calendar.DAY_OF_MONTH, 1);
+        rpFim.add(java.util.Calendar.DAY_OF_MONTH, -1);
+    } else if ("12m".equals(rpPeriodo)) {
+        rpIni.add(java.util.Calendar.MONTH, -12);
+        rpIni.add(java.util.Calendar.DAY_OF_MONTH, 1);
+    } else if ("personalizado".equals(rpPeriodo)) {
+        java.util.Date de = rpParseData(request.getParameter("rp_de"));
+        java.util.Date ate = rpParseData(request.getParameter("rp_ate"));
+        if (de != null) rpIni.setTime(de);
+        else rpIni.set(java.util.Calendar.DAY_OF_YEAR, 1);
+        if (ate != null) rpFim.setTime(ate);
+        if (rpFim.before(rpIni)) { java.util.Calendar tmp = rpIni; rpIni = rpFim; rpFim = tmp; }
+    } else { // ano letivo / ano corrente
+        rpIni.set(java.util.Calendar.DAY_OF_YEAR, 1);
+    }
+    java.util.Calendar rpFimExcl = (java.util.Calendar) rpFim.clone();
+    rpFimExcl.add(java.util.Calendar.DAY_OF_MONTH, 1);
+    java.sql.Timestamp tsIni = new java.sql.Timestamp(rpIni.getTimeInMillis());
+    java.sql.Timestamp tsFim = new java.sql.Timestamp(rpFimExcl.getTimeInMillis());
+
+    String rpRotuloFaixa = "f1".equals(rpFaixa) ? "1º ao 5º ano" : "f2".equals(rpFaixa) ? "6º ano em diante" : "todas as turmas";
+%>
+<% if (rpPode) { %>
+<style type="text/css">
+    /* ================================================================
+       PAINEL DA BIBLIOTECA (relatórios quantitativos)
+       ================================================================ */
+    .rp {
+        --rp-ink: #0f172a; --rp-soft: #334155; --rp-muted: #64748b;
+        --rp-line: #e2e8f0; --rp-bg: #f8fafc; --rp-blue: #2563eb; --rp-blue-2: #93c5fd;
+        --rp-red: #b91c1c; --rp-red-bg: #fef2f2; --rp-green: #15803d;
+        max-width: 1100px;
+        margin: 0 auto 32px;
+        color: var(--rp-ink);
+        font-size: 14px;
+        line-height: 1.5;
+    }
+    .rp *, .rp *::before, .rp *::after { box-sizing: border-box; }
+    .rp [hidden] { display: none !important; }
+    .rp-topo { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 8px 0 16px; }
+    .rp-topo h1 { margin: 0; font-size: clamp(20px, 3vw, 26px); font-weight: 800; letter-spacing: -0.01em; }
+    .rp-topo p { margin: 4px 0 0; color: var(--rp-muted); }
+    .rp-filtros {
+        display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px;
+        padding: 16px; margin-bottom: 16px;
+        background: #ffffff; border: 1px solid var(--rp-line); border-radius: 14px;
+    }
+    .rp-campo { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .rp-campo label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--rp-muted); }
+    .rp-campo select, .rp-campo input { min-height: 38px; min-width: 150px; }
+    .rp-campo.rp-datas { flex-direction: row; gap: 8px; align-items: flex-end; }
+    .rp-campo.rp-datas > div { display: flex; flex-direction: column; gap: 4px; }
+    .rp-filtros .rp-aplicar {
+        min-height: 38px; padding: 8px 18px; border-radius: 8px; border: 1px solid var(--rp-blue);
+        background: var(--rp-blue); color: #ffffff; font: inherit; font-weight: 700; cursor: pointer;
+    }
+    .rp-filtros .rp-aplicar:hover { background: #1d4ed8; }
+    .rp-nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 16px; }
+    .rp-nav a {
+        padding: 6px 12px; border-radius: 999px; border: 1px solid var(--rp-line); background: #ffffff;
+        color: var(--rp-soft); font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .rp-nav a:hover { border-color: var(--rp-blue); color: var(--rp-blue); }
+    .rp-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr)); gap: 12px; margin-bottom: 16px; }
+    .rp-kpi { background: #ffffff; border: 1px solid var(--rp-line); border-radius: 14px; padding: 14px 16px; }
+    .rp-kpi .v { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; }
+    .rp-kpi .r { font-size: 12px; color: var(--rp-muted); margin-top: 4px; }
+    .rp-kpi.alerta .v { color: var(--rp-red); }
+    .rp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .rp-card {
+        background: #ffffff; border: 1px solid var(--rp-line); border-radius: 14px;
+        margin-bottom: 16px; overflow: hidden; scroll-margin-top: 16px;
+    }
+    .rp-grid .rp-card { margin-bottom: 0; }
+    .rp-card-head {
+        display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px;
+        padding: 14px 16px; border-bottom: 1px solid var(--rp-line);
+    }
+    .rp-card-head h2 { margin: 0; font-size: 16px; font-weight: 700; }
+    .rp-card-head p { margin: 2px 0 0; font-size: 12px; color: var(--rp-muted); }
+    .rp-btn {
+        font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+        padding: 6px 12px; border-radius: 8px; border: 1px solid var(--rp-line); background: #ffffff; color: var(--rp-soft);
+    }
+    .rp-btn:hover { border-color: var(--rp-blue); color: var(--rp-blue); }
+    .rp-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .rp-tab { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .rp-tab th {
+        position: sticky; top: 0; background: var(--rp-bg); text-align: left; white-space: nowrap;
+        font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--rp-muted);
+        padding: 8px 12px; border-bottom: 1px solid var(--rp-line);
+    }
+    .rp-tab td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+    .rp-tab tr:last-child td { border-bottom: 0; }
+    .rp-tab .n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .rp-tab .pos { width: 36px; color: var(--rp-muted); font-variant-numeric: tabular-nums; }
+    .rp-tab .t { min-width: 180px; }
+    .rp-barra-cel { min-width: 120px; }
+    .rp-barra { height: 8px; border-radius: 99px; background: #eef2f7; overflow: hidden; }
+    .rp-barra > span { display: block; height: 100%; border-radius: 99px; background: var(--rp-blue); }
+    .rp-dias { font-weight: 700; color: var(--rp-red); white-space: nowrap; }
+    .rp-tab tr.grave td { background: var(--rp-red-bg); }
+    .rp-delta-pos { color: var(--rp-green); font-weight: 600; }
+    .rp-delta-neg { color: var(--rp-red); font-weight: 600; }
+    .rp-vazio { padding: 24px 16px; text-align: center; color: var(--rp-muted); font-style: italic; }
+    .rp-erro { padding: 16px; color: var(--rp-red); }
+    .rp-grafico { padding: 12px 16px 4px; }
+    .rp-grafico { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .rp-grafico svg { width: 100%; min-width: 640px; height: auto; display: block; }
+    .rp-legenda { display: flex; gap: 16px; font-size: 12px; color: var(--rp-muted); padding: 0 16px 8px; }
+    .rp-legenda i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+    .rp-nota { font-size: 12px; color: var(--rp-muted); padding: 10px 16px; border-top: 1px solid var(--rp-line); }
+    .rp-pdf-titulo { max-width: 960px; margin: 28px auto 10px; font-size: 16px; font-weight: 700; color: var(--rp-soft); }
+    @media (max-width: 860px) {
+        .rp-grid { grid-template-columns: minmax(0, 1fr); }
+    }
+    @media (max-width: 560px) {
+        .rp-filtros { padding: 12px; }
+        .rp-campo, .rp-campo select, .rp-campo input { width: 100%; min-width: 0; }
+        .rp-campo.rp-datas { width: 100%; }
+        .rp-campo.rp-datas > div { flex: 1 1 0; }
+        .rp-filtros .rp-aplicar { width: 100%; }
+        .rp-kpi .v { font-size: 22px; }
+        .rp-tab td, .rp-tab th { padding: 7px 10px; }
+    }
+    @media print {
+        #header, #menu, #breadcrumb, .page_help, .rp-filtros, .rp-nav, .rp-btn, .rp-pdf, .rp-pdf-titulo, #copyright { display: none !important; }
+        .rp-card { break-inside: avoid; border-color: #cbd5e1; }
+        .rp-grid { grid-template-columns: 1fr 1fr; }
+        .rp-tab th { position: static; }
+    }
+</style>
+
+<div class="rp" id="painel-biblioteca">
+    <div class="rp-topo">
+        <div>
+            <h1>Painel da biblioteca</h1>
+            <p>De <strong><%= rpData(rpIni.getTime()) %></strong> a <strong><%= rpData(rpFim.getTime()) %></strong> · <%= rpRotuloFaixa %></p>
+        </div>
+        <button type="button" class="rp-btn" onclick="window.print();">Imprimir painel</button>
+    </div>
+
+    <form class="rp-filtros" method="get" action="" onsubmit="return rpEnviar(this);">
+        <input type="hidden" name="action" value="administration_reports" />
+        <div class="rp-campo">
+            <label for="rp_periodo">Período</label>
+            <select name="rp_periodo" id="rp_periodo" onchange="rpTrocarPeriodo(this.value);">
+                <option value="mes"<%= "mes".equals(rpPeriodo) ? " selected" : "" %>>Este mês</option>
+                <option value="mes_anterior"<%= "mes_anterior".equals(rpPeriodo) ? " selected" : "" %>>Mês passado</option>
+                <option value="ano"<%= "ano".equals(rpPeriodo) ? " selected" : "" %>>Este ano</option>
+                <option value="12m"<%= "12m".equals(rpPeriodo) ? " selected" : "" %>>Últimos 12 meses</option>
+                <option value="personalizado"<%= "personalizado".equals(rpPeriodo) ? " selected" : "" %>>Escolher datas…</option>
+            </select>
+        </div>
+        <div class="rp-campo rp-datas" id="rp_datas"<%= "personalizado".equals(rpPeriodo) ? "" : " hidden" %>>
+            <div><label for="rp_de">De</label><input type="date" name="rp_de" id="rp_de" value="<%= rpIso(rpIni.getTime()) %>" /></div>
+            <div><label for="rp_ate">Até</label><input type="date" name="rp_ate" id="rp_ate" value="<%= rpIso(rpFim.getTime()) %>" /></div>
+        </div>
+        <div class="rp-campo">
+            <label for="rp_faixa">Turmas</label>
+            <select name="rp_faixa" id="rp_faixa">
+                <option value="todas"<%= "todas".equals(rpFaixa) ? " selected" : "" %>>Todas</option>
+                <option value="f1"<%= "f1".equals(rpFaixa) ? " selected" : "" %>>1º ao 5º ano</option>
+                <option value="f2"<%= "f2".equals(rpFaixa) ? " selected" : "" %>>6º ano em diante</option>
+            </select>
+        </div>
+        <button type="submit" class="rp-aplicar">Atualizar</button>
+    </form>
+
+    <nav class="rp-nav" aria-label="Seções do painel">
+        <a href="#rp-atrasos">Atrasos</a>
+        <a href="#rp-mensal">Mês a mês</a>
+        <a href="#rp-turmas">Turmas</a>
+        <a href="#rp-leitores">Leitores</a>
+        <a href="#rp-livros">Livros</a>
+        <a href="#rp-assuntos">Assuntos</a>
+        <a href="#rp-semana">Dias da semana</a>
+        <a href="#rp-parados">Acervo parado</a>
+        <a href="#rp-pdf">Relatórios em PDF</a>
+    </nav>
+<%
+    java.sql.Connection rpConn = null;
+    try {
+        rpConn = bibConexao();
+        final String S = rpSchema;
+        String turmaL = bibSqlTurma(rpConn, S, "l.user_id");
+        String filtroFaixa = "f1".equals(rpFaixa) ? " AND " + turmaL + " ~ '^ *[1-5]'"
+                           : "f2".equals(rpFaixa) ? " AND " + turmaL + " ~ '^ *[6-9]'" : "";
+        String periodo = " l.created >= ? AND l.created < ? ";
+
+        // ---------------------------------------------------------------
+        // RESUMO
+        // ---------------------------------------------------------------
+        long kEmp = 0, kLeitores = 0, kTitulos = 0, kAtrasos = 0, kAlunos = 0;
+        java.sql.PreparedStatement ps = null;
+        java.sql.ResultSet rs = null;
+        try {
+            ps = rpConn.prepareStatement(
+                "SELECT COUNT(*) AS emp, COUNT(DISTINCT l.user_id) AS leitores, COUNT(DISTINCT bh.record_id) AS titulos " +
+                "FROM " + S + ".lendings l JOIN " + S + ".biblio_holdings bh ON bh.id = l.holding_id " +
+                "WHERE " + periodo + filtroFaixa);
+            ps.setTimestamp(1, tsIni); ps.setTimestamp(2, tsFim);
+            rs = ps.executeQuery();
+            if (rs.next()) { kEmp = rs.getLong("emp"); kLeitores = rs.getLong("leitores"); kTitulos = rs.getLong("titulos"); }
+            bibFechar(rs); bibFechar(ps);
+
+            ps = rpConn.prepareStatement(
+                "SELECT COUNT(*) FROM " + S + ".lendings l WHERE l.return_date IS NULL AND l.expected_return_date < CURRENT_DATE" + filtroFaixa);
+            rs = ps.executeQuery();
+            if (rs.next()) kAtrasos = rs.getLong(1);
+            bibFechar(rs); bibFechar(ps);
+
+            String turmaU = bibSqlTurma(rpConn, S, "u.id");
+            String filtroFaixaU = "f1".equals(rpFaixa) ? " AND t ~ '^ *[1-5]'" : "f2".equals(rpFaixa) ? " AND t ~ '^ *[6-9]'" : "";
+            ps = rpConn.prepareStatement(
+                "SELECT COUNT(*) FROM (SELECT " + turmaU + " AS t FROM " + S + ".users u WHERE u.status <> 'inactive') x " +
+                "WHERE t IS NOT NULL" + filtroFaixaU);
+            rs = ps.executeQuery();
+            if (rs.next()) kAlunos = rs.getLong(1);
+        } catch (Exception e) {
+            bibLog(getServletContext(), "painel/resumo", e);
+        } finally {
+            bibFechar(rs); bibFechar(ps);
+        }
+%>
+    <div class="rp-kpis">
+        <div class="rp-kpi"><div class="v"><%= rpNum(kEmp) %></div><div class="r">empréstimos no período</div></div>
+        <div class="rp-kpi"><div class="v"><%= rpNum(kLeitores) %></div><div class="r">leitores diferentes</div></div>
+        <div class="rp-kpi"><div class="v"><%= kLeitores > 0 ? rpDec((double) kEmp / kLeitores) : "0" %></div><div class="r">livros por leitor, em média</div></div>
+        <div class="rp-kpi"><div class="v"><%= kAlunos > 0 ? rpPct(100.0 * Math.min(kLeitores, kAlunos) / kAlunos) : "—" %></div><div class="r"><%= kAlunos > 0 ? "dos " + rpNum(kAlunos) + " alunos com turma pegaram livro" : "cadastre a turma dos alunos" %></div></div>
+        <div class="rp-kpi"><div class="v"><%= rpNum(kTitulos) %></div><div class="r">títulos diferentes emprestados</div></div>
+        <div class="rp-kpi<%= kAtrasos > 0 ? " alerta" : "" %>"><div class="v"><%= rpNum(kAtrasos) %></div><div class="r">devoluções atrasadas agora</div></div>
+    </div>
+
+<%
+        // ---------------------------------------------------------------
+        // ATRASOS (agora — independe do período)
+        // ---------------------------------------------------------------
+%>
+    <section class="rp-card" id="rp-atrasos">
+        <div class="rp-card-head">
+            <div><h2>Devoluções em atraso</h2><p>Situação de hoje, do maior atraso para o menor. Não depende do período escolhido.</p></div>
+            <button type="button" class="rp-btn" onclick="rpCsv('rp-atrasos-tab', 'atrasos');">Exportar CSV</button>
+        </div>
+        <div class="rp-wrap">
+<%
+        try {
+            ps = rpConn.prepareStatement(
+                "SELECT u.name AS aluno, " + turmaL + " AS turma, bh.accession_number AS tombo, " +
+                "(SELECT phrase FROM " + S + ".biblio_idx_sort WHERE record_id = bh.record_id AND indexing_group_id = 3 LIMIT 1) AS livro, " +
+                "l.created AS emprestado, l.expected_return_date AS prazo, (CURRENT_DATE - l.expected_return_date::date) AS dias " +
+                "FROM " + S + ".lendings l " +
+                "JOIN " + S + ".users u ON u.id = l.user_id " +
+                "JOIN " + S + ".biblio_holdings bh ON bh.id = l.holding_id " +
+                "WHERE l.return_date IS NULL AND l.expected_return_date < CURRENT_DATE" + filtroFaixa +
+                " ORDER BY dias DESC, u.name LIMIT 500");
+            rs = ps.executeQuery();
+            boolean algum = false;
+            while (rs.next()) {
+                if (!algum) {
+                    algum = true;
+%>
+            <table class="rp-tab" id="rp-atrasos-tab">
+                <thead><tr><th>Aluno</th><th>Turma</th><th>Livro</th><th>Tombo</th><th>Emprestado em</th><th>Prazo</th><th class="n">Dias de atraso</th></tr></thead>
+                <tbody>
+<%
+                }
+                int dias = rs.getInt("dias");
+%>
+                <tr<%= dias > 30 ? " class=\"grave\"" : "" %>>
+                    <td class="t"><%= rpEsc(rs.getString("aluno")) %></td>
+                    <td><%= rpEsc(bibNormalizarTurma(rs.getString("turma"))) %></td>
+                    <td class="t"><%= rpEsc(rs.getString("livro")) %></td>
+                    <td><%= rpEsc(rs.getString("tombo")) %></td>
+                    <td><%= rpData(rs.getTimestamp("emprestado")) %></td>
+                    <td><%= rpData(rs.getTimestamp("prazo")) %></td>
+                    <td class="n rp-dias"><%= dias %></td>
+                </tr>
+<%
+            }
+            if (algum) { %></tbody></table><% } else { %><div class="rp-vazio">Nenhum livro em atraso.</div><% }
+        } catch (Exception e) {
+            bibLog(getServletContext(), "painel/atrasos", e);
+            %><div class="rp-erro">Não foi possível carregar os atrasos (detalhes no log do Tomcat).</div><%
+        } finally {
+            bibFechar(rs); bibFechar(ps);
+        }
+%>
+        </div>
+    </section>
+
+<%
+        // ---------------------------------------------------------------
+        // MÊS A MÊS (12 meses terminando no fim do período)
+        // ---------------------------------------------------------------
+        java.util.List<Object[]> meses = new java.util.ArrayList<Object[]>();
+        try {
+            String sub = "FROM " + S + ".lendings l WHERE l.created >= m AND l.created < m + INTERVAL '1 month'" + filtroFaixa;
+            String subAnt = "FROM " + S + ".lendings l WHERE l.created >= m - INTERVAL '1 year' AND l.created < m - INTERVAL '11 months'" + filtroFaixa;
+            ps = rpConn.prepareStatement(
+                "SELECT m, (SELECT COUNT(*) " + sub + ") AS atual, (SELECT COUNT(DISTINCT l.user_id) " + sub + ") AS leitores, " +
+                "(SELECT COUNT(*) " + subAnt + ") AS anterior " +
+                "FROM generate_series(DATE_TRUNC('month', CAST(? AS date)) - INTERVAL '11 months', DATE_TRUNC('month', CAST(? AS date)), INTERVAL '1 month') AS m " +
+                "ORDER BY m");
+            ps.setDate(1, new java.sql.Date(rpFim.getTimeInMillis()));
+            ps.setDate(2, new java.sql.Date(rpFim.getTimeInMillis()));
+            rs = ps.executeQuery();
+            while (rs.next()) {
+                java.util.Calendar c = java.util.Calendar.getInstance();
+                c.setTime(rs.getTimestamp("m"));
+                meses.add(new Object[] { RP_MESES[c.get(java.util.Calendar.MONTH)] + "/" + String.valueOf(c.get(java.util.Calendar.YEAR)).substring(2),
+                                         rs.getLong("atual"), rs.getLong("leitores"), rs.getLong("anterior") });
+            }
+        } catch (Exception e) {
+            bibLog(getServletContext(), "painel/mensal", e);
+        } finally {
+            bibFechar(rs); bibFechar(ps);
+        }
+        // o último mês está "em andamento" quando o período termina hoje
+        boolean ultimoParcial = rpFim.getTimeInMillis() == rpHoje().getTimeInMillis()
+            && rpFim.get(java.util.Calendar.DAY_OF_MONTH) < rpFim.getActualMaximum(java.util.Calendar.DAY_OF_MONTH);
+        if (ultimoParcial && !meses.isEmpty()) meses.get(meses.size() - 1)[0] = meses.get(meses.size() - 1)[0] + "*";
+        long maxMes = 1;
+        for (Object[] m : meses) maxMes = Math.max(maxMes, Math.max((Long) m[1], (Long) m[3]));
+%>
+    <section class="rp-card" id="rp-mensal">
+        <div class="rp-card-head">
+            <div><h2>Comparativo mês a mês</h2><p>12 meses até <%= rpData(rpFim.getTime()) %>, comparados com o mesmo mês do ano anterior.</p></div>
+            <button type="button" class="rp-btn" onclick="rpCsv('rp-mensal-tab', 'mes-a-mes');">Exportar CSV</button>
+        </div>
+<% if (!meses.isEmpty()) {
+        int W = 1040, H = 230, base = 200, topo = 18, n = meses.size();
+        double slot = (double) (W - 40) / n;
+        double bw = Math.min(22, slot * 0.34);
+%>
+        <div class="rp-grafico" role="img" aria-label="Gráfico de empréstimos por mês, ano atual e ano anterior">
+            <svg viewBox="0 0 <%= W %> <%= H + 14 %>" xmlns="http://www.w3.org/2000/svg" font-family="inherit" font-size="11">
+                <line x1="30" x2="<%= W - 6 %>" y1="<%= base %>" y2="<%= base %>" stroke="#e2e8f0" />
+                <%  for (int g = 1; g <= 3; g++) { int y = base - (base - topo) * g / 3; %>
+                <line x1="30" x2="<%= W - 6 %>" y1="<%= y %>" y2="<%= y %>" stroke="#f1f5f9" />
+                <text x="26" y="<%= y + 4 %>" text-anchor="end" fill="#94a3b8"><%= Math.round((double) maxMes * g / 3) %></text>
+                <%  }
+                    for (int i = 0; i < n; i++) {
+                        Object[] m = meses.get(i);
+                        long at = (Long) m[1], an = (Long) m[3];
+                        double cx = 34 + slot * i + slot / 2;
+                        double ha = (double) (base - topo) * at / maxMes, hb = (double) (base - topo) * an / maxMes; %>
+                <rect x="<%= rpDec(cx - bw - 1).replace(',', '.') %>" y="<%= rpDec(base - hb).replace(',', '.') %>" width="<%= rpDec(bw).replace(',', '.') %>" height="<%= rpDec(hb).replace(',', '.') %>" rx="3" fill="#cbd5e1"><title><%= m[0] %> do ano anterior: <%= an %></title></rect>
+                <rect x="<%= rpDec(cx + 1).replace(',', '.') %>" y="<%= rpDec(base - ha).replace(',', '.') %>" width="<%= rpDec(bw).replace(',', '.') %>" height="<%= rpDec(ha).replace(',', '.') %>" rx="3" fill="#2563eb"><title><%= m[0] %>: <%= at %> empréstimos</title></rect>
+                <% if (at > 0) { %><text x="<%= rpDec(cx + 1 + bw / 2).replace(',', '.') %>" y="<%= rpDec(base - ha - 4).replace(',', '.') %>" text-anchor="middle" fill="#1e3a8a" font-weight="700"><%= at %></text><% } %>
+                <text x="<%= rpDec(cx).replace(',', '.') %>" y="<%= base + 16 %>" text-anchor="middle" fill="#64748b"><%= m[0] %></text>
+                <%  } %>
+            </svg>
+        </div>
+        <div class="rp-legenda"><span><i style="background:#2563eb"></i>Empréstimos no mês</span><span><i style="background:#cbd5e1"></i>Mesmo mês do ano anterior</span></div>
+        <div class="rp-wrap">
+            <table class="rp-tab" id="rp-mensal-tab">
+                <thead><tr><th>Mês</th><th class="n">Empréstimos</th><th class="n">Leitores</th><th class="n">Ano anterior</th><th class="n">Variação</th></tr></thead>
+                <tbody>
+                <% for (int i = n - 1; i >= 0; i--) {
+                       Object[] m = meses.get(i);
+                       long at = (Long) m[1], an = (Long) m[3];
+                       String delta = an == 0 ? (at == 0 ? "—" : "novo") : ((at >= an ? "+" : "") + Math.round(100.0 * (at - an) / an) + "%"); %>
+                    <tr><td><%= m[0] %></td><td class="n"><%= rpNum(at) %></td><td class="n"><%= rpNum((Long) m[2]) %></td><td class="n"><%= rpNum(an) %></td>
+                        <td class="n <%= an > 0 && at > an ? "rp-delta-pos" : an > 0 && at < an ? "rp-delta-neg" : "" %>"><%= delta %></td></tr>
+                <% } %>
+                </tbody>
+            </table>
+        </div>
+        <% if (ultimoParcial) { %><div class="rp-nota">* Mês em andamento: a comparação com o ano anterior ainda vai mudar.</div><% } %>
+<% } else { %><div class="rp-vazio">Sem dados.</div><% } %>
+    </section>
+
+<%
+        // ---------------------------------------------------------------
+        // TURMAS
+        // ---------------------------------------------------------------
+        java.util.Map<String, long[]> turmas = new java.util.HashMap<String, long[]>(); // emp, leitores, alunos
+        try {
+            ps = rpConn.prepareStatement(
+                "SELECT t, COUNT(*) AS emp, COUNT(DISTINCT user_id) AS leitores FROM (" +
+                "  SELECT l.user_id, " + turmaL + " AS t FROM " + S + ".lendings l WHERE " + periodo + filtroFaixa +
+                ") x WHERE t IS NOT NULL GROUP BY t");
+            ps.setTimestamp(1, tsIni); ps.setTimestamp(2, tsFim);
+            rs = ps.executeQuery();
+            while (rs.next()) {
+                String t = bibNormalizarTurma(rs.getString("t"));
+                long[] v = turmas.get(t);
+                if (v == null) { v = new long[3]; turmas.put(t, v); }
+                v[0] += rs.getLong("emp"); v[1] += rs.getLong("leitores");
+            }
+            bibFechar(rs); bibFechar(ps);
+
+            ps = rpConn.prepareStatement(
+                "SELECT t, COUNT(*) AS alunos FROM (SELECT " + bibSqlTurma(rpConn, S, "u.id") + " AS t FROM " + S + ".users u WHERE u.status <> 'inactive') x " +
+                "WHERE t IS NOT NULL GROUP BY t");
+            rs = ps.executeQuery();
+            while (rs.next()) {
+                String t = bibNormalizarTurma(rs.getString("t"));
+                String f = bibFaixaDaTurma(t);
+                if (!"todas".equals(rpFaixa) && !rpFaixa.equals(f)) continue;
+                long[] v = turmas.get(t);
+                if (v == null) { v = new long[3]; turmas.put(t, v); }
+                v[2] += rs.getLong("alunos");
+            }
+        } catch (Exception e) {
+            bibLog(getServletContext(), "painel/turmas", e);
+        } finally {
+            bibFechar(rs); bibFechar(ps);
+        }
+        java.util.List<java.util.Map.Entry<String, long[]>> listaTurmas = new java.util.ArrayList<java.util.Map.Entry<String, long[]>>(turmas.entrySet());
+        java.util.Collections.sort(listaTurmas, new java.util.Comparator<java.util.Map.Entry<String, long[]>>() {
+            public int compare(java.util.Map.Entry<String, long[]> a, java.util.Map.Entry<String, long[]> b) {
+                int d = Long.compare(b.getValue()[0], a.getValue()[0]);
+                return d != 0 ? d : a.getKey().compareTo(b.getKey());
+            }
+        });
+        long maxTurma = 1;
+        for (java.util.Map.Entry<String, long[]> e : listaTurmas) maxTurma = Math.max(maxTurma, e.getValue()[0]);
+%>
+    <section class="rp-card" id="rp-turmas">
+        <div class="rp-card-head">
+            <div><h2>Turmas com mais empréstimos</h2><p>Quantos livros cada turma levou e quantos alunos dela pegaram ao menos um.</p></div>
+            <button type="button" class="rp-btn" onclick="rpCsv('rp-turmas-tab', 'turmas');">Exportar CSV</button>
+        </div>
+        <div class="rp-wrap">
+<% if (!listaTurmas.isEmpty()) { %>
+            <table class="rp-tab" id="rp-turmas-tab">
+                <thead><tr><th class="pos">#</th><th>Turma</th><th class="n">Empréstimos</th><th class="rp-barra-cel"></th><th class="n">Leitores</th><th class="n">Alunos</th><th class="n">% que leu</th><th class="n">Livros/aluno</th></tr></thead>
+                <tbody>
+                <% int pt = 0; for (java.util.Map.Entry<String, long[]> e : listaTurmas) { pt++; long[] v = e.getValue(); %>
+                    <tr>
+                        <td class="pos"><%= pt %>º</td>
+                        <td><strong><%= rpEsc(e.getKey()) %></strong></td>
+                        <td class="n"><%= rpNum(v[0]) %></td>
+                        <td class="rp-barra-cel"><div class="rp-barra"><span style="width:<%= Math.round(100.0 * v[0] / maxTurma) %>%"></span></div></td>
+                        <td class="n"><%= rpNum(v[1]) %></td>
+                        <td class="n"><%= v[2] > 0 ? rpNum(v[2]) : "—" %></td>
+                        <td class="n"><%= v[2] > 0 ? rpPct(100.0 * Math.min(v[1], v[2]) / v[2]) : "—" %></td>
+                        <td class="n"><%= v[2] > 0 ? rpDec((double) v[0] / v[2]) : "—" %></td>
+                    </tr>
+                <% } %>
+                </tbody>
+            </table>
+<% } else { %><div class="rp-vazio">Nenhum empréstimo de aluno com turma cadastrada no período.</div><% } %>
+        </div>
+<% String campoTurma = bibCampoTurma(rpConn, S); %>
+        <div class="rp-nota"><%= campoTurma != null
+            ? "Turma lida do campo <strong>" + rpEsc(campoTurma) + "</strong> do cadastro de usuários."
+            : "Nenhum campo \"Turma\" encontrado no cadastro; usando valores com formato de turma (ex.: 6A, 7º B)." %></div>
+    </section>
+
+<%
+        // ---------------------------------------------------------------
+        // LEITORES
+        // ---------------------------------------------------------------
+%>
+    <section class="rp-card" id="rp-leitores">
+        <div class="rp-card-head">
+            <div><h2>Quem mais pegou livros</h2><p>Os 50 leitores com mais empréstimos no período.</p></div>
+            <button type="button" class="rp-btn" onclick="rpCsv('rp-leitores-tab', 'leitores');">Exportar CSV</button>
+        </div>
+        <div class="rp-wrap">
+<%
+        try {
+            ps = rpConn.prepareStatement(
+                "SELECT u.name, " + bibSqlTurma(rpConn, S, "u.id") + " AS turma, COUNT(*) AS emp, COUNT(DISTINCT bh.record_id) AS titulos, MAX(l.created) AS ultimo " +
+                "FROM " + S + ".lendings l JOIN " + S + ".users u ON u.id = l.user_id " +
+                "JOIN " + S + ".biblio_holdings bh ON bh.id = l.holding_id " +
+                "WHERE " + periodo + filtroFaixa + " GROUP BY u.id, u.name ORDER BY emp DESC, u.name LIMIT 50");
+            ps.setTimestamp(1, tsIni); ps.setTimestamp(2, tsFim);
+            rs = ps.executeQuery();
+            int p = 0;
+            while (rs.next()) {
+                if (p++ == 0) { %><table class="rp-tab" id="rp-leitores-tab"><thead><tr><th class="pos">#</th><th>Leitor</th><th>Turma</th><th class="n">Empréstimos</th><th class="n">Títulos</th><th>Último</th></tr></thead><tbody><% }
+%>
+                <tr><td class="pos"><%= p %>º</td><td class="t"><%= rpEsc(rs.getString("name")) %></td><td><%= rpEsc(bibNormalizarTurma(rs.getString("turma"))) %></td>
+                    <td class="n"><strong><%= rs.getLong("emp") %></strong></td><td class="n"><%= rs.getLong("titulos") %></td><td><%= rpData(rs.getTimestamp("ultimo")) %></td></tr>
+<%
+            }
+            if (p > 0) { %></tbody></table><% } else { %><div class="rp-vazio">Nenhum empréstimo no período.</div><% }
+        } catch (Exception e) {
+            bibLog(getServletContext(), "painel/leitores", e);
+            %><div class="rp-erro">Não foi possível carregar os leitores.</div><%
+        } finally {
+            bibFechar(rs); bibFechar(ps);
+        }
+%>
+        </div>
+    </section>
+
+<%
+        // ---------------------------------------------------------------
+        // LIVROS
+        // ---------------------------------------------------------------
+%>
+    <section class="rp-card" id="rp-livros">
+        <div class="rp-card-head">
+            <div><h2>Livros mais emprestados</h2><p>Os 30 títulos mais procurados no período.</p></div>
+            <button type="button" class="rp-btn" onclick="rpCsv('rp-livros-tab', 'livros');">Exportar CSV</button>
+        </div>
+        <div class="rp-wrap">
+<%
+        try {
+            ps = rpConn.prepareStatement(
+                "SELECT x.record_id, x.emp, x.leitores, " +
+                "(SELECT phrase FROM " + S + ".biblio_idx_sort WHERE record_id = x.record_id AND indexing_group_id = 3 LIMIT 1) AS titulo, " +
+                "(SELECT phrase FROM " + S + ".biblio_idx_sort WHERE record_id = x.record_id AND indexing_group_id = 1 LIMIT 1) AS autor " +
+                "FROM (SELECT bh.record_id, COUNT(*) AS emp, COUNT(DISTINCT l.user_id) AS leitores " +
+                "      FROM " + S + ".lendings l JOIN " + S + ".biblio_holdings bh ON bh.id = l.holding_id " +
+                "      WHERE " + periodo + filtroFaixa + " GROUP BY bh.record_id ORDER BY emp DESC LIMIT 30) x ORDER BY x.emp DESC, titulo");
+            ps.setTimestamp(1, tsIni); ps.setTimestamp(2, tsFim);
+            rs = ps.executeQuery();
+            int p = 0;
+            while (rs.next()) {
+                if (p++ == 0) { %><table class="rp-tab" id="rp-livros-tab"><thead><tr><th class="pos">#</th><th>Título</th><th>Autor</th><th class="n">Empréstimos</th><th class="n">Leitores</th></tr></thead><tbody><% }
+%>
+                <tr><td class="pos"><%= p %>º</td><td class="t"><%= rpEsc(rs.getString("titulo")) %></td><td><%= rpEsc(rs.getString("autor")) %></td>
+                    <td class="n"><strong><%= rs.getLong("emp") %></strong></td><td class="n"><%= rs.getLong("leitores") %></td></tr>
+<%
+            }
+            if (p > 0) { %></tbody></table><% } else { %><div class="rp-vazio">Nenhum empréstimo no período.</div><% }
+        } catch (Exception e) {
+            bibLog(getServletContext(), "painel/livros", e);
+            %><div class="rp-erro">Não foi possível carregar os livros.</div><%
+        } finally {
+            bibFechar(rs); bibFechar(ps);
+        }
+%>
+        </div>
+    </section>
+
+<%
+        // ---------------------------------------------------------------
+        // ASSUNTOS + DIAS DA SEMANA
+        // ---------------------------------------------------------------
+        java.util.List<Object[]> assuntos = new java.util.ArrayList<Object[]>();
+        try {
+            ps = rpConn.prepareStatement(
+                "SELECT f.word, COUNT(DISTINCT l.id) AS emp, COUNT(DISTINCT bh.record_id) AS titulos " +
+                "FROM " + S + ".lendings l JOIN " + S + ".biblio_holdings bh ON bh.id = l.holding_id " +
+                "JOIN " + S + ".biblio_idx_fields f ON f.record_id = bh.record_id AND f.indexing_group_id = 4 " +
+                "WHERE " + periodo + filtroFaixa + " AND LENGTH(f.word) >= 4 " +
+                "GROUP BY f.word ORDER BY emp DESC LIMIT 80");
+            ps.setTimestamp(1, tsIni); ps.setTimestamp(2, tsFim);
+            rs = ps.executeQuery();
+            while (rs.next() && assuntos.size() < 20) {
+                String w = rs.getString("word");
+                if (w == null || BIB_STOPWORDS_ASSUNTO.contains(w.toLowerCase()) || w.matches(".*\\d.*")) continue;
+                assuntos.add(new Object[] { w, rs.getLong("emp"), rs.getLong("titulos") });
+            }
+        } catch (Exception e) {
+            bibLog(getServletContext(), "painel/assuntos", e);
+        } finally {
+            bibFechar(rs); bibFechar(ps);
+        }
+        long maxAssunto = assuntos.isEmpty() ? 1 : Math.max(1, (Long) assuntos.get(0)[1]);
+
+        long[] semana = new long[7];
+        try {
+            ps = rpConn.prepareStatement(
+                "SELECT EXTRACT(DOW FROM l.created)::int AS d, COUNT(*) FROM " + S + ".lendings l WHERE " + periodo + filtroFaixa + " GROUP BY 1");
+            ps.setTimestamp(1, tsIni); ps.setTimestamp(2, tsFim);
+            rs = ps.executeQuery();
+            while (rs.next()) semana[rs.getInt(1)] = rs.getLong(2);
+        } catch (Exception e) {
+            bibLog(getServletContext(), "painel/semana", e);
+        } finally {
+            bibFechar(rs); bibFechar(ps);
+        }
+        long maxSemana = 1;
+        for (long v : semana) maxSemana = Math.max(maxSemana, v);
+        String[] nomesDias = {"Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"};
+%>
+    <div class="rp-grid">
+    <section class="rp-card" id="rp-assuntos">
+        <div class="rp-card-head">
+            <div><h2>Assuntos mais lidos</h2><p>Palavras dos assuntos (campo 650 e afins) dos livros emprestados.</p></div>
+            <button type="button" class="rp-btn" onclick="rpCsv('rp-assuntos-tab', 'assuntos');">Exportar CSV</button>
+        </div>
+        <div class="rp-wrap">
+<% if (!assuntos.isEmpty()) { %>
+            <table class="rp-tab" id="rp-assuntos-tab">
+                <thead><tr><th>Assunto</th><th class="n">Empréstimos</th><th class="rp-barra-cel"></th><th class="n">Títulos</th></tr></thead>
+                <tbody>
+                <% for (Object[] a : assuntos) { long v = (Long) a[1]; String w = (String) a[0]; %>
+                    <tr><td><strong><%= rpEsc(Character.toUpperCase(w.charAt(0)) + w.substring(1)) %></strong></td><td class="n"><%= v %></td>
+                        <td class="rp-barra-cel"><div class="rp-barra"><span style="width:<%= Math.round(100.0 * v / maxAssunto) %>%"></span></div></td><td class="n"><%= a[2] %></td></tr>
+                <% } %>
+                </tbody>
+            </table>
+<% } else { %><div class="rp-vazio">Sem assuntos catalogados nos livros emprestados do período.</div><% } %>
+        </div>
+    </section>
+
+    <section class="rp-card" id="rp-semana">
+        <div class="rp-card-head">
+            <div><h2>Movimento por dia da semana</h2><p>Ajuda a planejar horário de atendimento e atividades.</p></div>
+            <button type="button" class="rp-btn" onclick="rpCsv('rp-semana-tab', 'dias-da-semana');">Exportar CSV</button>
+        </div>
+        <div class="rp-wrap">
+            <table class="rp-tab" id="rp-semana-tab">
+                <thead><tr><th>Dia</th><th class="n">Empréstimos</th><th class="rp-barra-cel"></th></tr></thead>
+                <tbody>
+                <% for (int d = 1; d <= 7; d++) { int i = d % 7; if ((i == 0 || i == 6) && semana[i] == 0) continue; %>
+                    <tr><td><%= nomesDias[i] %></td><td class="n"><%= rpNum(semana[i]) %></td>
+                        <td class="rp-barra-cel"><div class="rp-barra"><span style="width:<%= Math.round(100.0 * semana[i] / maxSemana) %>%"></span></div></td></tr>
+                <% } %>
+                </tbody>
+            </table>
+        </div>
+    </section>
+    </div>
+
+<%
+        // ---------------------------------------------------------------
+        // ACERVO PARADO
+        // ---------------------------------------------------------------
+%>
+    <section class="rp-card" id="rp-parados" style="margin-top:16px">
+        <div class="rp-card-head">
+            <div><h2>Acervo parado</h2><p>Títulos sem nenhum empréstimo há mais de 1 ano (ou nunca emprestados) — bons candidatos a vitrine, indicação ou descarte.</p></div>
+            <button type="button" class="rp-btn" onclick="rpCsv('rp-parados-tab', 'acervo-parado');">Exportar CSV</button>
+        </div>
+        <div class="rp-wrap">
+<%
+        try {
+            ps = rpConn.prepareStatement(
+                "SELECT y.record_id, y.ultimo, y.exemplares, y.desde, " +
+                "(SELECT phrase FROM " + S + ".biblio_idx_sort WHERE record_id = y.record_id AND indexing_group_id = 3 LIMIT 1) AS titulo, " +
+                "(SELECT phrase FROM " + S + ".biblio_idx_sort WHERE record_id = y.record_id AND indexing_group_id = 1 LIMIT 1) AS autor, " +
+                "COUNT(*) OVER () AS total " +
+                "FROM (SELECT bh.record_id, MAX(l.created) AS ultimo, COUNT(DISTINCT bh.id) AS exemplares, MIN(bh.created) AS desde " +
+                "      FROM " + S + ".biblio_holdings bh " +
+                "      JOIN " + S + ".biblio_records br ON br.id = bh.record_id AND br.database = 'main' " +
+                "      LEFT JOIN " + S + ".lendings l ON l.holding_id = bh.id " +
+                "      GROUP BY bh.record_id " +
+                "      HAVING MAX(l.created) IS NULL OR MAX(l.created) < CURRENT_DATE - INTERVAL '1 year') y " +
+                "ORDER BY y.ultimo NULLS FIRST, y.desde LIMIT 100");
+            rs = ps.executeQuery();
+            int p = 0;
+            long total = 0;
+            while (rs.next()) {
+                if (p++ == 0) {
+                    total = rs.getLong("total");
+%>
+            <table class="rp-tab" id="rp-parados-tab">
+                <thead><tr><th>Título</th><th>Autor</th><th class="n">Exemplares</th><th>No acervo desde</th><th>Último empréstimo</th></tr></thead>
+                <tbody>
+<%              } %>
+                <tr><td class="t"><%= rpEsc(rs.getString("titulo")) %></td><td><%= rpEsc(rs.getString("autor")) %></td><td class="n"><%= rs.getLong("exemplares") %></td>
+                    <td><%= rpData(rs.getTimestamp("desde")) %></td><td><%= rs.getTimestamp("ultimo") == null ? "nunca" : rpData(rs.getTimestamp("ultimo")) %></td></tr>
+<%
+            }
+            if (p > 0) { %></tbody></table>
+            <div class="rp-nota"><strong><%= rpNum(total) %></strong> títulos parados no total<%= total > 100 ? "; mostrando os 100 há mais tempo sem sair" : "" %>.</div><%
+            } else { %><div class="rp-vazio">Todo o acervo circulou no último ano.</div><% }
+        } catch (Exception e) {
+            bibLog(getServletContext(), "painel/parados", e);
+            %><div class="rp-erro">Não foi possível carregar o acervo parado.</div><%
+        } finally {
+            bibFechar(rs); bibFechar(ps);
+        }
+%>
+        </div>
+    </section>
+<%
+    } catch (Exception e) {
+        bibLog(getServletContext(), "painel/conexao", e);
+        %><div class="rp-card"><div class="rp-erro">Não foi possível conectar ao banco do Biblivre (detalhes no log do Tomcat).</div></div><%
+    } finally {
+        bibFechar(rpConn);
+    }
+%>
+</div>
+
+<script type="text/javascript">
+    function rpTrocarPeriodo(v) {
+        var d = document.getElementById('rp_datas');
+        if (d) d.hidden = (v !== 'personalizado');
+    }
+    function rpEnviar(form) {
+        // datas só vão na URL quando o período é personalizado
+        if (form.rp_periodo.value !== 'personalizado') {
+            form.rp_de.disabled = true;
+            form.rp_ate.disabled = true;
+        }
+        return true;
+    }
+    /* Exporta a tabela como CSV (separador ";" e BOM para abrir certo no Excel em português) */
+    function rpCsv(idTabela, nome) {
+        var t = document.getElementById(idTabela);
+        if (!t) return;
+        var linhas = [];
+        for (var i = 0; i < t.rows.length; i++) {
+            var cel = [];
+            for (var j = 0; j < t.rows[i].cells.length; j++) {
+                var c = t.rows[i].cells[j];
+                if (c.className.indexOf('rp-barra-cel') !== -1) continue;
+                var txt = (c.textContent || '').replace(/\s+/g, ' ').trim();
+                cel.push('"' + txt.replace(/"/g, '""') + '"');
+            }
+            linhas.push(cel.join(';'));
+        }
+        var blob = new Blob(['﻿' + linhas.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'biblioteca-' + nome + '-<%= rpIso(rpIni.getTime()) %>-a-<%= rpIso(rpFim.getTime()) %>.csv';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function() { URL.revokeObjectURL(a.href); a.parentNode.removeChild(a); }, 500);
+    }
+</script>
+<% } %>

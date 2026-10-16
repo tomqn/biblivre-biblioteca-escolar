@@ -1,0 +1,172 @@
+<%@page pageEncoding="UTF-8"%>
+<%!
+    /* =================================================================
+       biblioteca.jspf — funções compartilhadas pelas páginas da
+       biblioteca escolar (index.jsp, capa.jsp, painel de relatórios).
+       Incluído pelas páginas com a diretiva include (arquivo /jsp/inc/biblioteca.jspf).
+       Todos os nomes começam com "bib" para não colidir com nada.
+       ================================================================= */
+
+    /* Nome do campo de cadastro que guarda a turma do aluno.
+       Deixe vazio para detectar sozinho (procura um campo cujo nome ou
+       rótulo tenha "turma", "classe", "série" ou "sala"). Se a detecção
+       errar, coloque aqui a chave do campo, ex.: "turma". */
+    private static final String BIB_CAMPO_TURMA_FIXO = "";
+
+    /* Turma "de verdade": 1 a 9, opcional º/°/o/ano, e uma letra.
+       Aceita "6A", "6º A", "6 ano B", "7°B". Nunca casa com telefone ou e-mail. */
+    private static final String BIB_REGEX_TURMA = "^\\s*[1-9]\\s*(º|°|o|ª)?\\s*(ano|serie|série)?\\s*[-/ ]?\\s*[A-Za-z]\\s*$";
+
+    private static final java.util.Map<String, Object[]> BIB_CACHE_TURMA =
+        java.util.Collections.synchronizedMap(new java.util.HashMap<String, Object[]>());
+
+    /* Conexão SEMPRE pelo pool do próprio Biblivre (JNDI jdbc/biblivre4).
+       Sem senha no código: as credenciais ficam só no context.xml do Tomcat. */
+    private java.sql.Connection bibConexao() throws Exception {
+        javax.sql.DataSource ds = (javax.sql.DataSource) new javax.naming.InitialContext().lookup("java:comp/env/jdbc/biblivre4");
+        return ds.getConnection();
+    }
+
+    private void bibFechar(Object o) {
+        if (o == null) return;
+        try {
+            if (o instanceof java.sql.ResultSet) ((java.sql.ResultSet) o).close();
+            else if (o instanceof java.sql.Statement) ((java.sql.Statement) o).close();
+            else if (o instanceof java.sql.Connection) ((java.sql.Connection) o).close();
+        } catch (Exception ignored) {}
+    }
+
+    private boolean bibSchemaValido(String schema) {
+        return schema != null && schema.matches("[A-Za-z_][A-Za-z0-9_]*");
+    }
+
+    /* Registra no log do Tomcat (catalina.out) em vez de engolir o erro. */
+    private void bibLog(javax.servlet.ServletContext ctx, String onde, Throwable t) {
+        try {
+            if (ctx != null) ctx.log("[biblioteca-escolar] " + onde + ": " + t, t);
+            else System.err.println("[biblioteca-escolar] " + onde + ": " + t);
+        } catch (Throwable ignored) {}
+    }
+
+    /* Permissões reais do Biblivre, guardadas na sessão pelo login. */
+    private biblivre.core.auth.AuthorizationPoints bibPermissoes(javax.servlet.http.HttpServletRequest request, String schema) {
+        try {
+            javax.servlet.http.HttpSession sess = request.getSession(false);
+            if (sess == null) return null;
+            Object atps = sess.getAttribute(schema + ".logged_user_atps");
+            return (atps instanceof biblivre.core.auth.AuthorizationPoints) ? (biblivre.core.auth.AuthorizationPoints) atps : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /* Funcionário logado (bibliotecário, auxiliar, admin) — não basta ter sessão. */
+    private boolean bibEhFuncionario(javax.servlet.http.HttpServletRequest request, String schema) {
+        biblivre.core.auth.AuthorizationPoints atps = bibPermissoes(request, schema);
+        if (atps == null) return false;
+        try {
+            return atps.isLogged() && (atps.isEmployee() || atps.isAdmin());
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private boolean bibPodeVerRelatorios(javax.servlet.http.HttpServletRequest request, String schema) {
+        biblivre.core.auth.AuthorizationPoints atps = bibPermissoes(request, schema);
+        if (atps == null) return false;
+        try {
+            return atps.isLogged() && atps.isAllowed("menu", "administration_reports");
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /* Descobre a chave do campo "turma" no cadastro de usuários.
+       Retorna null se não achar — aí usamos só valores que casem com BIB_REGEX_TURMA. */
+    private String bibCampoTurma(java.sql.Connection conn, String schema) {
+        if (BIB_CAMPO_TURMA_FIXO != null && BIB_CAMPO_TURMA_FIXO.length() > 0) return BIB_CAMPO_TURMA_FIXO;
+
+        Object[] cache = BIB_CACHE_TURMA.get(schema);
+        if (cache != null && System.currentTimeMillis() - (Long) cache[1] < 10 * 60 * 1000L) {
+            return (String) cache[0];
+        }
+
+        String achado = null;
+        java.sql.PreparedStatement ps = null;
+        java.sql.ResultSet rs = null;
+        try {
+            ps = conn.prepareStatement(
+                "SELECT f.key FROM " + schema + ".users_fields f " +
+                "LEFT JOIN " + schema + ".translations t ON t.key = 'circulation.user_field.' || f.key " +
+                "WHERE f.key ~* '(turma|classe|serie|série|sala|class|grade)' " +
+                "   OR t.text ~* '(turma|classe|série|serie|sala)' " +
+                "ORDER BY (f.key ~* 'turma') DESC, f.sort_order LIMIT 1");
+            rs = ps.executeQuery();
+            if (rs.next()) achado = rs.getString(1);
+        } catch (Exception ignored) {
+            // tabela de traduções por schema pode não existir em versões antigas
+        } finally {
+            bibFechar(rs);
+            bibFechar(ps);
+        }
+        BIB_CACHE_TURMA.put(schema, new Object[] { achado, System.currentTimeMillis() });
+        return achado;
+    }
+
+    /* Trecho SQL que devolve a turma do usuário cujo id está em "colUsuario".
+       Com campo detectado: valor desse campo. Sem campo: o primeiro valor
+       do cadastro que tenha cara de turma (nunca telefone/e-mail). */
+    private String bibSqlTurma(java.sql.Connection conn, String schema, String colUsuario) {
+        String campo = bibCampoTurma(conn, schema);
+        if (campo != null && campo.matches("[A-Za-z0-9_]+")) {
+            return "(SELECT NULLIF(TRIM(uv.value), '') FROM " + schema + ".users_values uv " +
+                   "WHERE uv.user_id = " + colUsuario + " AND uv.key = '" + campo + "' LIMIT 1)";
+        }
+        return "(SELECT TRIM(uv.value) FROM " + schema + ".users_values uv " +
+               "WHERE uv.user_id = " + colUsuario + " AND uv.value ~* E'" +
+               BIB_REGEX_TURMA.replace("\\", "\\\\").replace("'", "''") + "' LIMIT 1)";
+    }
+
+    /* "6º A" → "6A", "7 ano b" → "7B": uma grafia só para agrupar. */
+    private String bibNormalizarTurma(String turma) {
+        if (turma == null) return null;
+        String t = turma.trim();
+        if (t.length() == 0) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern
+            .compile("^\\s*([1-9])\\s*(?:º|°|o|ª)?\\s*(?:ano|serie|série)?\\s*[-/ ]?\\s*([A-Za-z])\\s*$", java.util.regex.Pattern.CASE_INSENSITIVE)
+            .matcher(t);
+        if (m.matches()) return m.group(1) + m.group(2).toUpperCase();
+        return t;
+    }
+
+    /* Faixa da turma: "f1" = 1º ao 5º ano, "f2" = 6º ano em diante. */
+    private String bibFaixaDaTurma(String turma) {
+        if (turma == null) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("([1-9])").matcher(turma);
+        if (!m.find()) return null;
+        int ano = Integer.parseInt(m.group(1));
+        return ano <= 5 ? "f1" : "f2";
+    }
+
+    /* Palavras de assunto genéricas demais para contar como "tema". */
+    private static final java.util.Set<String> BIB_STOPWORDS_ASSUNTO = new java.util.HashSet<String>(java.util.Arrays.asList(
+        "literatura", "literaturas", "infantojuvenil", "infantojuvenis", "infantil", "infantis",
+        "juvenil", "juvenis", "brasileira", "brasileiro", "brasileiros", "brasileiras",
+        "ficcao", "ficcoes", "contos", "conto", "historia", "historias", "narrativa", "narrativas",
+        "colecao", "colecoes", "edicao", "edicoes", "texto", "textos", "obra", "obras",
+        "infancia", "criancas", "crianca", "imaginacao", "traducao", "traducoes",
+        "seculo", "seculos", "geral", "nacional", "estrangeira", "estrangeiro",
+        "portugues", "portuguesa", "lingua", "linguas", "escrita", "leitura", "leituras",
+        "critica", "criticas", "ensaio", "ensaios", "biografia", "biografias",
+        "popular", "populares", "tradicional", "tradicionais", "moderna", "moderno",
+        "classica", "classico", "americana", "americano"
+    ));
+
+    /* "Ana Clara Souza" → "Ana C." — nome de aluno na página pública. */
+    private String bibNomeCurto(String nome) {
+        if (nome == null || nome.trim().length() == 0) return "Leitor";
+        String[] p = nome.trim().split("\\s+");
+        if (p.length == 1) return p[0];
+        return p[0] + " " + Character.toUpperCase(p[p.length - 1].charAt(0)) + ".";
+    }
+%>
