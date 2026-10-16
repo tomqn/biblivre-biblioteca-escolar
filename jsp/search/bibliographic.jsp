@@ -19,6 +19,7 @@
 	<script type="text/javascript" src="static/scripts/biblivre.input.js"></script>
 	<script type="text/javascript" src="static/scripts/biblivre.cataloging.input.js"></script>
 	<script type="text/javascript" src="static/scripts/biblivre.holding.input.js"></script>
+	<script type="text/javascript" src="static/scripts/biblivre.capas.js"></script>
 	
 	<script type="text/javascript" src="static/scripts/<%= Fields.getFormFields((String) request.getAttribute("schema"), "biblio").getCacheFileName() %>"></script>
 	<script type="text/javascript" src="static/scripts/<%= Fields.getFormFields((String) request.getAttribute("schema"), "holding").getCacheFileName() %>"></script>
@@ -26,36 +27,6 @@
 	<script type="text/javascript" src="static/scripts/zebra_datepicker.js"></script>
 	<link rel="stylesheet" type="text/css" href="static/styles/zebra.bootstrap.css">
 
-	<!-- =========================================================
-	     Capa nos resultados de busca (cataloging.bibliographic)
-	     Depende de $T.record.cover_url vindo do back-end (JSON de
-	     busca). Se o campo não existir/for null, a capa simplesmente
-	     não é desenhada (ver {#if} no template mais abaixo).
-	     ========================================================= -->
-	<style type="text/css">
-		.search_results .result {
-			position: relative;
-		}
-		.search_results .result_cover {
-			float: left;
-			width: 56px;
-			height: 78px;
-			margin: 0 12px 6px 0;
-			border-radius: 4px;
-			overflow: hidden;
-			background: #e2e8f0;
-			box-shadow: 0 2px 6px rgba(15, 23, 42, 0.18);
-		}
-		.search_results .result_cover img {
-			width: 100%;
-			height: 100%;
-			object-fit: cover;
-			display: block;
-		}
-		.search_results .result .record {
-			overflow: hidden; /* evita que o texto passe por baixo da capa flutuante */
-		}
-	</style>
 
 	<script type="text/javascript">
 		var CatalogingSearch = CreateSearch(CatalogingSearchClass, {
@@ -139,6 +110,9 @@
 	
 		<div class="selected_highlight"></div>
 		<textarea class="selected_highlight_template template"><!-- 
+			<div class="result_cover" data-capa-id="{$T.id}">
+				<img src="?controller=capa&amp;id={$T.id}" alt="" decoding="async" onerror="Capas.semCapa(this)" />
+			</div>
 			<div class="record">
 				{#if $T.title}<label><i18n:text key="search.bibliographic.title" /></label>: {$T.title}<br/>{#/if}
 				{#if $T.author}<label><i18n:text key="search.bibliographic.author" /></label>: {$T.author}<br/>{#/if}
@@ -421,8 +395,8 @@
 								<a class="button center" rel="select_item" onclick="CatalogingSearch.selectRecord('{$T.record.id}');"><i18n:text key="cataloging.bibliographic.button.select_item" /></a>
 							</div>
 
-							<div class="result_cover">
-								<img src="capa.jsp?id={$T.record.id}" alt="{$T.record.title}" loading="lazy" decoding="async" onerror="this.parentNode.style.display='none';" />
+							<div class="result_cover" data-capa-id="{$T.record.id}">
+								<img src="?controller=capa&amp;id={$T.record.id}" alt="" loading="lazy" decoding="async" onerror="Capas.semCapa(this)" />
 							</div>
 
 							<div class="record">

@@ -19,6 +19,7 @@
 	<script type="text/javascript" src="static/scripts/biblivre.input.js"></script>
 	<script type="text/javascript" src="static/scripts/biblivre.cataloging.input.js"></script>
 	<script type="text/javascript" src="static/scripts/biblivre.holding.input.js"></script>
+	<script type="text/javascript" src="static/scripts/biblivre.capas.js"></script>
 
 	<script type="text/javascript" src="static/scripts/<%= Fields.getFormFields((String) request.getAttribute("schema"), "biblio").getCacheFileName() %>"></script>
 	<script type="text/javascript" src="static/scripts/<%= Fields.getFormFields((String) request.getAttribute("schema"), "holding").getCacheFileName() %>"></script>
@@ -54,6 +55,10 @@
 		HoldingInput.root = '#holding_search';
 		HoldingInput.search = HoldingSearch;
 		
+		$(document).ready(function() {
+			Capas.iniciarCatalogacao('cataloging.bibliographic');
+		});
+
 		$(document).ready(function() {
 			var global = Globalize.culture().calendars.standard;
 			
@@ -230,6 +235,11 @@
 			
 			<div class="tabs_extra_content">
 				<div class="tab_extra_content biblivre_record_extra" data-tab="record">
+					<fieldset class="capa_registro_box">
+						<legend>Capa do livro</legend>
+						<div id="capa_registro"></div>
+					</fieldset>
+
 					<fieldset>
 						<legend><i18n:text key="cataloging.common.digital_files" /></legend>
 						
@@ -492,6 +502,9 @@
 								<a class="button center" rel="open_item" onclick="CatalogingSearch.openResult('{$T.record.id}');"><i18n:text key="search.bibliographic.open_item_button" /></a>
 								<a class="button center" rel="select_item" onclick="CatalogingSearch.selectRecord('{$T.record.id}');"><i18n:text key="cataloging.bibliographic.button.select_item" /></a>
 								<a class="danger_button center" onclick="CatalogingInput.deleteRecord('{$T.record.id}');"><i18n:text key="cataloging.bibliographic.button.delete" /></a>
+							</div>
+							<div class="result_cover" data-capa-id="{$T.record.id}">
+								<img src="?controller=capa&amp;id={$T.record.id}" alt="" loading="lazy" decoding="async" onerror="Capas.semCapa(this)" />
 							</div>
 							<div class="record">
 								{#if $T.record.title}<label><i18n:text key="search.bibliographic.title" /></label>: {$T.record.title}<br/>{#/if}

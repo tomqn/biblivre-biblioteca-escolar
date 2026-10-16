@@ -1770,3 +1770,304 @@ body {
   width: 48px;
   object-fit: contain;
 }
+/* ==========================================================================
+   14. Capas por registro (biblivre.capas.js + capa.jsp)
+   ========================================================================== */
+
+/* Miniatura nos resultados de busca (Pesquisa e Catalogação) */
+.search_results .result_cover,
+.selected_highlight .result_cover {
+  float: left;
+  width: 64px;
+  aspect-ratio: 2 / 3;
+  height: auto;
+  margin: 2px var(--bb-space-4) var(--bb-space-2) 0;
+  border-radius: var(--bb-radius-sm);
+  overflow: hidden;
+  background: var(--bb-surface-alt);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.16);
+  position: relative;
+}
+
+.search_results .result_cover img,
+.selected_highlight .result_cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.search_results .result_cover--vazia,
+.selected_highlight .result_cover--vazia {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--bb-line-strong);
+  box-shadow: inset 0 0 0 1px var(--bb-line);
+}
+
+.search_results .result_cover--vazia svg,
+.selected_highlight .result_cover--vazia svg {
+  width: 26px;
+  height: 26px;
+}
+
+.search_results .result .record,
+.selected_highlight .record {
+  overflow: hidden; /* o texto não passa por baixo da capa */
+}
+
+/* Painel "Capa do livro" na Catalogação */
+.capa_registro_box {
+  margin-bottom: var(--bb-space-4);
+}
+
+.capa-painel {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--bb-space-5);
+  padding: var(--bb-space-2) 0;
+  transition: opacity 0.15s ease;
+}
+
+.capa-painel--ocupado {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.capa-painel__preview {
+  position: relative;
+  flex: 0 0 auto;
+  width: 150px;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--bb-radius);
+  overflow: hidden;
+  background: var(--bb-surface-alt);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.16), 0 2px 5px rgba(15, 23, 42, 0.08);
+}
+
+.capa-painel__preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.capa-painel__preview--vazia {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--bb-space-2);
+  color: var(--bb-ink-muted);
+  border: 2px dashed var(--bb-line-strong);
+  box-shadow: none;
+}
+
+.capa-painel__preview--vazia svg {
+  width: 40px;
+  height: 40px;
+  opacity: 0.55;
+}
+
+.capa-painel__vazio-txt {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.capa-painel__preview--carregando svg {
+  animation: capa-pulso 1.2s ease-in-out infinite;
+}
+
+@keyframes capa-pulso {
+  50% { opacity: 0.2; }
+}
+
+.capa-painel__preview--soltavel {
+  cursor: pointer;
+}
+
+.capa-painel__preview--soltavel:focus-visible {
+  outline: none;
+  box-shadow: var(--bb-focus);
+}
+
+.capa-painel__soltar {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--bb-space-3);
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffffff;
+  background: rgba(29, 78, 216, 0.82);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.capa-painel__preview--arrastando .capa-painel__soltar {
+  opacity: 1;
+}
+
+.capa-painel__acoes {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--bb-space-3);
+}
+
+.capa-painel__botoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bb-space-2);
+}
+
+.capa-painel__botoes .capa-painel__enviar,
+.capa-painel__botoes .capa-painel__remover {
+  position: relative;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: var(--bb-space-2);
+  min-height: 40px;
+  height: auto;
+  padding: 8px 16px;
+  margin: 0;
+  float: none;
+  border-radius: var(--bb-radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+  overflow: hidden;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.capa-painel__botoes .capa-painel__enviar {
+  color: #ffffff;
+  background: var(--bb-brand-600);
+  border: 1px solid var(--bb-brand-600);
+}
+
+.capa-painel__botoes .capa-painel__enviar:hover {
+  background: var(--bb-brand-700);
+  border-color: var(--bb-brand-700);
+}
+
+.capa-painel__botoes .capa-painel__remover {
+  color: var(--bb-danger);
+  background: var(--bb-surface);
+  border: 1px solid #fecaca;
+}
+
+.capa-painel__botoes .capa-painel__remover:hover {
+  background: var(--bb-danger-bg);
+  border-color: var(--bb-danger);
+}
+
+.capa-painel__enviar svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+/* input de arquivo invisível, mas clicável via <label> */
+.capa-painel__arquivo {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.capa-painel__enviar:focus-within {
+  box-shadow: var(--bb-focus);
+}
+
+.capa-painel__dica {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--bb-ink-muted);
+}
+
+.capa-painel__anexos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--bb-space-2);
+  font-size: 13px;
+  color: var(--bb-ink-soft);
+}
+
+.capa-painel__anexo {
+  display: inline-block;
+  max-width: 100%;
+  padding: 4px 10px;
+  border: 1px solid var(--bb-line);
+  border-radius: var(--bb-radius-pill);
+  background: var(--bb-surface-alt);
+  color: var(--bb-brand-700);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.capa-painel__anexo:hover {
+  border-color: var(--bb-brand-500);
+  background: var(--bb-brand-50);
+}
+
+.capa-painel__status {
+  min-height: 1.4em;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.capa-painel__status[data-tipo="ok"] { color: var(--bb-success); }
+.capa-painel__status[data-tipo="erro"] { color: var(--bb-danger); }
+.capa-painel__status[data-tipo="info"] { color: var(--bb-ink-muted); }
+
+@media (max-width: 560px) {
+  .capa-painel {
+    flex-direction: column;
+    align-items: center;
+    gap: var(--bb-space-4);
+    text-align: center;
+  }
+
+  .capa-painel__preview {
+    width: min(170px, 55vw);
+  }
+
+  .capa-painel__acoes,
+  .capa-painel__botoes,
+  .capa-painel__anexos {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .capa-painel__botoes > * {
+    flex: 1 1 140px;
+    justify-content: center;
+  }
+
+  .search_results .result_cover,
+  .selected_highlight .result_cover {
+    width: 52px;
+    margin-right: var(--bb-space-3);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .capa-painel__preview--carregando svg { animation: none; }
+}

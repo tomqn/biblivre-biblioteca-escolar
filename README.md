@@ -105,6 +105,44 @@ CSS base. As mudanças incluem:
   responsivo funcione em celulares (o Biblivre originalmente injeta um
   viewport errado que faz o site ser renderizado em 980px)
 
+### 🖼️ Capa por registro
+
+Cada registro bibliográfico tem **sua própria capa**, enviada na tela de
+Catalogação — como em outros sistemas de gestão de acervo. A antiga
+"gambiarra" que tentava adivinhar a capa cruzando o título do livro com os
+arquivos digitais foi removida.
+
+- **Onde enviar:** Catalogação → abra o registro → aba *Resumo* → bloco
+  **Capa do livro**. Dá para clicar em *Enviar capa*, arrastar a imagem até
+  a capa ou reaproveitar uma imagem que já esteja anexada ao registro.
+- **Trocar / remover:** no mesmo bloco.
+- **Tamanho:** a imagem é reduzida no navegador para no máximo 600×900 px
+  (JPEG), então foto de celular funciona e o banco não incha.
+- **Onde aparece:** home (todas as vitrines), resultados da Pesquisa e da
+  Catalogação e no registro aberto na Pesquisa. Livro sem capa continua
+  com a capa ilustrada automática.
+- **Permissão:** só quem pode *salvar* na catalogação bibliográfica envia
+  ou remove capas; qualquer visitante pode vê-las.
+- **Armazenamento:** tabela `capas_registro`, criada sozinha no schema da
+  biblioteca no primeiro envio. Como fica dentro do schema, entra no
+  backup normal do Biblivre.
+- **Conexão com o banco:** `index.jsp` e `capa.jsp` usam o pool do próprio
+  Biblivre (`jdbc/biblivre4`), sem senha fixa no código — por isso funciona
+  em outras instalações.
+
+Arquivos: `jsp/capa.jsp`, `static/scripts/biblivre.capas.js`, seção 14 de
+`static/styles/biblivre.modern.css`, `jsp/cataloging/bibliographic.jsp`,
+`jsp/search/bibliographic.jsp` e o topo do `jsp/index.jsp` (rota
+`?controller=capa`).
+
+### 📐 Responsividade
+
+- Breakpoints únicos na home: 1100 / 900 / 640 / 400 px
+- Carrosséis com rolagem por "encaixe" no toque e setas no desktop
+- Cards e capas com largura fluida; nada estoura a largura da tela até 320 px
+- Busca do hero sem borda duplicada e sem empurrar o botão para fora
+- Selo *Disponível/Emprestado* preservado também nas capas ilustradas
+
 ---
 
 ## Estrutura do repositório

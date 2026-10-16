@@ -1,6 +1,5 @@
 <%@page import="java.sql.*"%>
 <%@page import="java.util.*"%>
-<%@page import="java.text.Normalizer"%>
 <%@page import="java.net.URLEncoder"%>
 <%@page import="biblivre.core.utils.Constants"%>
 <%@page import="biblivre.core.configurations.Configurations"%>
@@ -12,6 +11,18 @@
 
 <%@ taglib prefix="layout" uri="/WEB-INF/tlds/layout.tld" %>
 <%@ taglib prefix="i18n" uri="/WEB-INF/tlds/translations.tld" %>
+<%
+    /* Rota das capas: toda URL "?controller=capa" cai aqui (o Biblivre
+       despacha controllers desconhecidos para o index.jsp). Encaminhamos
+       para capa.jsp antes de gerar qualquer HTML. */
+    if ("capa".equals(request.getParameter("controller"))) {
+        String schemaCapa = null;
+        try { schemaCapa = ((ExtendedRequest) request).getSchema(); } catch (Throwable ignored) {}
+        request.setAttribute("capa_schema", schemaCapa);
+        pageContext.forward("/jsp/capa.jsp");
+        return;
+    }
+%>
 
 <%!
     private String getNomeCurto(String nomeCompleto) {
@@ -41,98 +52,53 @@
         if (c != null) try { c.close(); } catch (Exception ignored) {}
     }
 
-    private String codificarBase64(String texto) {
+    /* Conexão: usa o pool do próprio Biblivre (JNDI jdbc/biblivre4). Assim
+       funciona em qualquer instalação, sem senha fixa no código. */
+    private Connection abrirConexao() throws Exception {
         try {
-            return java.util.Base64.getEncoder().encodeToString(texto.getBytes("UTF-8"));
-        } catch (Throwable t) {
-            try {
-                return org.apache.commons.codec.binary.Base64.encodeBase64String(texto.getBytes("UTF-8"));
-            } catch (Throwable t2) {
-                return "";
-            }
+            javax.sql.DataSource ds = (javax.sql.DataSource) new javax.naming.InitialContext().lookup("java:comp/env/jdbc/biblivre4");
+            if (ds != null) return ds.getConnection();
+        } catch (Exception ignored) {}
+        Class.forName("org.postgresql.Driver");
+        try {
+            return DriverManager.getConnection("jdbc:postgresql://localhost:5432/biblivre4", "biblivre", "abracadabra");
+        } catch (SQLException e) {
+            return DriverManager.getConnection("jdbc:postgresql://localhost:5432/biblivre4", "postgres", "abracadabra");
         }
     }
 
-    private String normalizarTexto(String s) {
-        if (s == null) return "";
-        String nfd = Normalizer.normalize(s.toLowerCase(), Normalizer.Form.NFD);
-        return nfd.replaceAll("\\p{InCombiningDiacriticalMarks}+", "").replaceAll("[^a-z0-9]", "");
-    }
-
-    private static class MediaItem {
-        int id;
-        String name;
-        String normalizedName;
-        MediaItem(int id, String name, String normalizedName) {
-            this.id = id;
-            this.name = name;
-            this.normalizedName = normalizedName;
-        }
-    }
-
-    private List<MediaItem> carregarTodasMedias(Connection conn, String schema) {
-        List<MediaItem> lista = new ArrayList<MediaItem>();
-        if (conn == null) return lista;
+    /* =========================================================
+       CAPAS POR REGISTRO
+       =========================================================
+       Cada registro bibliográfico pode ter UMA capa própria, enviada
+       na tela de Catalogação (tabela <schema>.capas_registro, gerida
+       por capa.jsp). Aqui só carregamos, de uma vez, quais registros
+       têm capa e a "versão" (data da última troca), para montar a URL
+       com cache. Nada de adivinhar capa pelo título. */
+    private Map<Integer, Long> carregarCapas(Connection conn, String schema) {
+        Map<Integer, Long> capas = new HashMap<Integer, Long>();
+        if (conn == null) return capas;
         Statement st = null;
         ResultSet rs = null;
         try {
-            String sql = "SELECT id, name FROM " + schema + ".digital_media " +
-                         "WHERE name ~* '\\.(jpg|jpeg|png|webp|gif)$' ORDER BY id ASC";
             st = conn.createStatement();
-            rs = st.executeQuery(sql);
+            rs = st.executeQuery("SELECT record_id, CAST(EXTRACT(EPOCH FROM atualizado) * 1000 AS bigint) AS v FROM " + schema + ".capas_registro");
             while (rs.next()) {
-                int id = rs.getInt("id");
-                String name = rs.getString("name");
-                String semExt = name.replaceFirst("(?i)\\.(jpg|jpeg|png|webp|gif)$", "");
-                lista.add(new MediaItem(id, name, normalizarTexto(semExt)));
+                capas.put(rs.getInt("record_id"), rs.getLong("v"));
             }
         } catch (Exception ignored) {
+            // tabela ainda não criada (nenhuma capa enviada) → sem capas
         } finally {
             closeQuietly(rs);
             closeQuietly(st);
         }
-        return lista;
+        return capas;
     }
 
-    private String obterUrlCapa(Connection conn, String schema, int recordId, String titulo, List<MediaItem> todasMedias) {
-        if (conn == null || todasMedias == null || todasMedias.isEmpty()) return null;
-
-        PreparedStatement ps = null;
-        ResultSet rs = null;
-        try {
-            String sqlMarc = "SELECT iso2709::text AS marc_data FROM " + schema + ".biblio_records WHERE id = ?";
-            ps = conn.prepareStatement(sqlMarc);
-            ps.setInt(1, recordId);
-            rs = ps.executeQuery();
-            if (rs.next()) {
-                String marcData = rs.getString("marc_data");
-                if (marcData != null) {
-                    for (MediaItem m : todasMedias) {
-                        if (marcData.contains(m.name) || marcData.contains(m.id + ":" + m.name)) {
-                            return "DigitalMediaController/?id=" + codificarBase64(m.id + ":" + m.name);
-                        }
-                    }
-                }
-            }
-        } catch (Exception ignored) {
-        } finally {
-            closeQuietly(rs);
-            closeQuietly(ps);
-        }
-
-        if (titulo != null && !titulo.isEmpty()) {
-            String tituloNorm = normalizarTexto(titulo);
-            for (MediaItem m : todasMedias) {
-                if (m.normalizedName.length() >= 3) {
-                    if (tituloNorm.equals(m.normalizedName) ||
-                        tituloNorm.contains(m.normalizedName) ||
-                        m.normalizedName.contains(tituloNorm)) {
-                        return "DigitalMediaController/?id=" + codificarBase64(m.id + ":" + m.name);
-                    }
-                }
-            }
-        }
-        return null;
+    private String urlCapa(Map<Integer, Long> capas, int recordId) {
+        Long versao = capas.get(recordId);
+        if (versao == null) return null;
+        return "?controller=capa&amp;id=" + recordId + "&amp;v=" + versao;
     }
 
     private boolean isDisponivel(Connection conn, String schema, int recordId) {
@@ -328,8 +294,8 @@
         .library-hero {
             background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
             border-radius: 20px;
-            padding: 40px 40px 32px;
-            margin-bottom: 30px;
+            padding: clamp(22px, 4vw, 40px) clamp(18px, 4vw, 40px) clamp(20px, 3vw, 32px);
+            margin-bottom: clamp(18px, 3vw, 30px);
             color: #ffffff;
             position: relative;
             overflow: hidden;
@@ -440,8 +406,8 @@
             border-radius: 14px;
             padding: 5px 6px 5px 18px;
             box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28), 0 2px 6px rgba(0, 0, 0, 0.12);
-            flex: 1;
-            min-width: 280px;
+            flex: 1 1 340px;
+            min-width: 0;
             transition: box-shadow 0.18s ease;
         }
         .hero-search-box:focus-within {
@@ -463,6 +429,19 @@
             padding: 12px 0;
         }
         .hero-search-input::placeholder { color: #94a3b8; }
+        /* vence o estilo global de input[type=text] do tema (borda/sombra
+           duplicada) e deixa o campo encolher no celular */
+        .hero-search-box input.hero-search-input,
+        .hero-search-box input.hero-search-input:hover,
+        .hero-search-box input.hero-search-input:focus {
+            border: 0;
+            box-shadow: none;
+            background: transparent;
+            border-radius: 0;
+            padding: 12px 8px 12px 0;
+            min-width: 0;
+            width: 100%;
+        }
         .hero-search-btn {
             background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
             color: #ffffff;
@@ -479,6 +458,7 @@
             transition: transform 0.15s ease, box-shadow 0.15s ease;
             box-shadow: 0 3px 10px rgba(37, 99, 235, 0.35);
             white-space: nowrap;
+            flex: 0 0 auto;
         }
         .hero-search-btn:hover {
             transform: translateY(-1px);
@@ -580,7 +560,10 @@
             display: flex;
             align-items: center;
             gap: 16px;
+            min-width: 0;
+            flex: 1 1 260px;
         }
+        .library-section-title-area > div:last-child { min-width: 0; }
         .library-section-icon {
             width: 46px; height: 46px;
             min-width: 46px;
@@ -699,14 +682,19 @@
             padding: 26px 28px 30px;
             scrollbar-width: thin;
             scrollbar-color: #cbd5e1 transparent;
+            scroll-snap-type: x proximity;
+            scroll-padding-inline: 28px;
+            overscroll-behavior-x: contain;
+            -webkit-overflow-scrolling: touch;
         }
+        .library-books-scroll > * { scroll-snap-align: start; }
         .library-books-scroll::-webkit-scrollbar { height: 6px; }
         .library-books-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
 
         a.library-book-card,
         .library-book-card {
-            flex: 0 0 172px;
-            width: 172px;
+            flex: 0 0 var(--card-w, 172px);
+            width: var(--card-w, 172px);
             cursor: pointer;
             transition: transform 0.26s cubic-bezier(0.34, 1.4, 0.64, 1);
             position: relative;
@@ -858,7 +846,7 @@
            ========================================================= */
         .classrooms-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr));
             gap: 16px;
             padding: 24px 28px 28px;
         }
@@ -947,8 +935,8 @@
            CLUBE DA LEITURA
            ========================================================= */
         .reader-card {
-            flex: 0 0 220px;
-            width: 220px;
+            flex: 0 0 var(--reader-w, 220px);
+            width: var(--reader-w, 220px);
             background: #ffffff;
             border: 1px solid var(--rule);
             border-radius: 16px;
@@ -1039,8 +1027,8 @@
            ATRASOS
            ========================================================= */
         .overdue-card {
-            flex: 0 0 210px;
-            width: 210px;
+            flex: 0 0 var(--overdue-w, 210px);
+            width: var(--overdue-w, 210px);
             background: #ffffff;
             border: 1px solid #fecaca;
             border-radius: 14px;
@@ -1130,17 +1118,109 @@
             }
         }
 
-        @media screen and (max-width: 768px) {
-            .library-hero { padding: 28px 22px; }
-            .hero-pill { padding: 6px 12px; font-size: 10px; min-height: 36px; }
-            .hero-pill strong { font-size: 14px; }
-            .hero-surprise-btn { width: 100%; justify-content: center; }
+        /* =========================================================
+           CARROSSEL — setas no desktop (só aparecem com mouse)
+           ========================================================= */
+        .carousel-wrap { position: relative; }
+        .carousel-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 5;
+            width: 42px; height: 42px;
+            border-radius: 50%;
+            border: 1px solid var(--rule);
+            background: rgba(255,255,255,0.96);
+            color: var(--ink);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 6px 18px rgba(15, 23, 42, 0.16);
+            transition: opacity 0.18s ease, background 0.18s ease;
+        }
+        .carousel-nav:hover { background: #ffffff; }
+        .carousel-nav[disabled] { opacity: 0; pointer-events: none; }
+        .carousel-nav.prev { left: 8px; }
+        .carousel-nav.next { right: 8px; }
+        @media (hover: hover) and (pointer: fine) {
+            .carousel-wrap.is-scrollable .carousel-nav { display: inline-flex; }
+        }
+
+        /* Hover só em dispositivos com mouse (evita card "preso" no toque) */
+        @media (hover: none) {
+            .library-book-card:hover,
+            .classroom-card:hover,
+            .reader-card:hover,
+            .overdue-card:hover { transform: none; }
+        }
+
+        /* =========================================================
+           RESPONSIVO — 1100 / 900 / 640 / 400
+           ========================================================= */
+        @media screen and (max-width: 1100px) {
+            .library-dashboard { padding-top: 8px; }
+        }
+
+        @media screen and (max-width: 900px) {
+            .library-dashboard { --card-w: 156px; --reader-w: 200px; --overdue-w: 196px; }
+            .hero-top-row { margin-bottom: 22px; }
+            .library-section { border-radius: 16px; margin-bottom: 22px; }
             .library-section-header { padding: 18px 20px; }
+            .library-books-scroll { padding: 22px 20px 26px; gap: 16px; scroll-padding-inline: 20px; }
+            .classrooms-grid { padding: 20px; gap: 14px; }
+            .library-theme-filters { padding: 12px 16px; }
+        }
+
+        @media screen and (max-width: 640px) {
+            .library-dashboard {
+                --card-w: clamp(128px, 38vw, 150px);
+                --reader-w: clamp(170px, 62vw, 200px);
+                --overdue-w: clamp(170px, 62vw, 196px);
+                padding-bottom: 36px;
+                font-size: 13px;
+            }
+            .library-hero { border-radius: 16px; }
+            .hero-top-row { gap: 16px; margin-bottom: 18px; }
+            .hero-stats-pills { width: 100%; gap: 8px; }
+            .hero-pill { flex: 1 1 auto; justify-content: center; padding: 6px 12px; font-size: 10px; min-height: 36px; }
+            .hero-pill strong { font-size: 14px; }
+            .hero-search-area { gap: 10px; }
+            .hero-search-box { flex-basis: 100%; padding-left: 14px; }
+            .hero-search-icon { margin-right: 8px; }
+            .hero-search-btn { padding: 10px 16px; }
+            .hero-surprise-btn { width: 100%; justify-content: center; }
+            .hero-trending-topics {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                margin: 22px calc(-1 * clamp(18px, 4vw, 40px)) 0;
+                padding: 18px clamp(18px, 4vw, 40px) 4px;
+                scrollbar-width: none;
+            }
+            .hero-trending-topics::-webkit-scrollbar { display: none; }
+            .hero-trending-label { flex: 0 0 auto; }
+            .hero-topic-pill { flex: 0 0 auto; }
+            .library-section { border-radius: 14px; margin-bottom: 18px; }
+            .library-section-header { padding: 16px; gap: 10px; }
+            .library-section-title-area { gap: 12px; }
             .library-section-icon { width: 38px; height: 38px; min-width: 38px; border-radius: 11px; }
             .library-section-icon svg { width: 18px; height: 18px; }
-            .library-theme-filters { padding: 12px 16px; }
-            .library-books-scroll { padding: 20px 18px 24px; gap: 16px; }
-            .library-book-card { flex-basis: 148px; width: 148px; }
+            .library-section-badge { padding: 5px 10px; font-size: 9px; letter-spacing: 0.12em; }
+            .library-books-scroll { padding: 18px 16px 22px; gap: 14px; scroll-padding-inline: 16px; scroll-snap-type: x mandatory; }
+            .library-book-cover { margin-bottom: 10px; }
+            .styled-cover-title { font-size: 12px; }
+            .status-badge { top: 8px; right: 8px; padding: 3px 8px; font-size: 8px; }
+            .classrooms-grid { padding: 16px; gap: 12px; }
+            .classroom-card { padding: 16px; }
+            .library-theme-filters { padding: 10px 12px; scroll-snap-type: x proximity; }
+            .theme-filter-btn { scroll-snap-align: start; }
+            .reader-card { padding: 16px; }
+        }
+
+        @media screen and (max-width: 400px) {
+            .library-dashboard { --card-w: 42vw; }
+            .library-section-badge { display: none; }
+            .hero-search-btn { padding: 10px 12px; letter-spacing: 0.04em; }
         }
     </style>
 
@@ -1208,12 +1288,14 @@
                 }
                 var grad = COVER_PALETTE[Math.abs(hash) % COVER_PALETTE.length];
 
-                el.innerHTML =
+                // mantém o selo Disponível/Emprestado; só troca a imagem pela capa ilustrada
+                if (img && img.parentNode) img.parentNode.removeChild(img);
+                el.insertAdjacentHTML('beforeend',
                     '<div class="book-styled-cover" style="background:' + grad + ';">' +
                     '  <div class="styled-cover-icon">&#9670;</div>' +
                     '  <div class="styled-cover-title">' + escapeHtml(rawTitle) + '</div>' +
                     '  <div class="styled-cover-author">' + escapeHtml(rawAuthor) + '</div>' +
-                    '</div>';
+                    '</div>');
             }
         }
 
@@ -1239,14 +1321,75 @@
                 btn.setAttribute('aria-selected', 'true');
             }
             renderizarCapasNaoCadastradas();
+            atualizarCarrosseis();
+        }
+
+        /* Setas de navegação nos carrosséis (desktop com mouse).
+           No celular/tablet o próprio dedo rola — as setas ficam ocultas via CSS. */
+        function montarCarrosseis() {
+            var trilhos = document.querySelectorAll('.library-books-scroll');
+            for (var i = 0; i < trilhos.length; i++) {
+                var trilho = trilhos[i];
+                if (trilho.parentNode.className.indexOf('carousel-wrap') !== -1) continue;
+
+                var wrap = document.createElement('div');
+                wrap.className = 'carousel-wrap';
+                trilho.parentNode.insertBefore(wrap, trilho);
+                wrap.appendChild(trilho);
+
+                var setaSvg = function(d) {
+                    return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="' + d + '"/></svg>';
+                };
+                var prev = document.createElement('button');
+                prev.type = 'button';
+                prev.className = 'carousel-nav prev';
+                prev.setAttribute('aria-label', 'Rolar para a esquerda');
+                prev.innerHTML = setaSvg('m15 18-6-6 6-6');
+                var next = document.createElement('button');
+                next.type = 'button';
+                next.className = 'carousel-nav next';
+                next.setAttribute('aria-label', 'Rolar para a direita');
+                next.innerHTML = setaSvg('m9 18 6-6-6-6');
+                wrap.appendChild(prev);
+                wrap.appendChild(next);
+
+                (function(t, p, n) {
+                    p.onclick = function() { t.scrollBy({ left: -t.clientWidth * 0.8, behavior: 'smooth' }); };
+                    n.onclick = function() { t.scrollBy({ left: t.clientWidth * 0.8, behavior: 'smooth' }); };
+                    t.addEventListener('scroll', function() { atualizarCarrossel(t); }, { passive: true });
+                })(trilho, prev, next);
+            }
+            atualizarCarrosseis();
+        }
+
+        function atualizarCarrossel(trilho) {
+            var wrap = trilho.parentNode;
+            if (!wrap || wrap.className.indexOf('carousel-wrap') === -1) return;
+            var rolavel = trilho.offsetParent !== null && trilho.scrollWidth > trilho.clientWidth + 4;
+            wrap.className = rolavel ? 'carousel-wrap is-scrollable' : 'carousel-wrap';
+            var p = wrap.querySelector('.carousel-nav.prev');
+            var n = wrap.querySelector('.carousel-nav.next');
+            if (p) p.disabled = trilho.scrollLeft <= 4;
+            if (n) n.disabled = trilho.scrollLeft + trilho.clientWidth >= trilho.scrollWidth - 4;
+        }
+
+        function atualizarCarrosseis() {
+            var trilhos = document.querySelectorAll('.library-books-scroll');
+            for (var i = 0; i < trilhos.length; i++) atualizarCarrossel(trilhos[i]);
+        }
+
+        function iniciarHome() {
+            renderizarCapasNaoCadastradas();
+            montarCarrosseis();
         }
 
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', renderizarCapasNaoCadastradas);
+            document.addEventListener('DOMContentLoaded', iniciarHome);
         } else {
-            renderizarCapasNaoCadastradas();
+            iniciarHome();
         }
-        window.addEventListener('load', renderizarCapasNaoCadastradas);
+        window.addEventListener('load', function() { renderizarCapasNaoCadastradas(); atualizarCarrosseis(); });
+        window.addEventListener('resize', atualizarCarrosseis);
     </script>
     <link rel="stylesheet" type="text/css" href="static/styles/biblivre.modern.css" />
 </layout:head>
@@ -1291,8 +1434,7 @@ if (!req.isGlobalSchema()) {
     List<String> titulosParaSorteio = new ArrayList<String>();
 
     try {
-        Class.forName("org.postgresql.Driver");
-        conn = DriverManager.getConnection("jdbc:postgresql://localhost:5432/biblivre4", "postgres", "abracadabra");
+        conn = abrirConexao();
 
         Statement stMeta = null;
         ResultSet rsMeta = null;
@@ -1330,7 +1472,7 @@ if (!req.isGlobalSchema()) {
             closeQuietly(stRand);
         }
 
-        List<MediaItem> todasMedias = carregarTodasMedias(conn, schema);
+        Map<Integer, Long> capas = carregarCapas(conn, schema);
         List<String> assuntosEmAlta = obterAssuntosEmAlta(conn, schema, 30, 6);
 %>
 
@@ -1435,7 +1577,7 @@ if (!req.isGlobalSchema()) {
                 int recordId = rs1.getInt("record_id");
                 String title = rs1.getString("titulo") != null ? rs1.getString("titulo") : "Sem título";
                 String author = rs1.getString("autor") != null ? rs1.getString("autor") : "Autor desconhecido";
-                String capaUrl = obterUrlCapa(conn, schema, recordId, title, todasMedias);
+                String capaUrl = urlCapa(capas, recordId);
                 boolean disp = isDisponivel(conn, schema, recordId);
         %>
             <a class="library-book-card" href="?action=search_bibliographic#query=<%= URLEncoder.encode(title, "UTF-8") %>&material=all">
@@ -1569,7 +1711,7 @@ if (!req.isGlobalSchema()) {
                     int recordId = rsCo.getInt("record_id");
                     String title = rsCo.getString("titulo") != null ? rsCo.getString("titulo") : "Sem título";
                     String author = rsCo.getString("autor") != null ? rsCo.getString("autor") : "Autor desconhecido";
-                    String capaUrl = obterUrlCapa(conn, schema, recordId, title, todasMedias);
+                    String capaUrl = urlCapa(capas, recordId);
                     boolean disp = isDisponivel(conn, schema, recordId);
         %>
             <a class="library-book-card" href="?action=search_bibliographic#query=<%= URLEncoder.encode(title, "UTF-8") %>&material=all">
@@ -1772,7 +1914,7 @@ if (!req.isGlobalSchema()) {
                     int recordId = rsTheme.getInt("record_id");
                     String title = rsTheme.getString("titulo") != null ? rsTheme.getString("titulo") : "Sem título";
                     String author = rsTheme.getString("autor") != null ? rsTheme.getString("autor") : "Autor desconhecido";
-                    String capaUrl = obterUrlCapa(conn, schema, recordId, title, todasMedias);
+                    String capaUrl = urlCapa(capas, recordId);
                     boolean disp = isDisponivel(conn, schema, recordId);
             %>
                 <a class="library-book-card" href="?action=search_bibliographic#query=<%= URLEncoder.encode(title, "UTF-8") %>&material=all">
@@ -1840,7 +1982,7 @@ if (!req.isGlobalSchema()) {
                 String title = rs3.getString("titulo") != null ? rs3.getString("titulo") : "Sem título";
                 String author = rs3.getString("autor") != null ? rs3.getString("autor") : "Autor desconhecido";
                 String dataCadastro = rs3.getString("data_cadastro") != null ? rs3.getString("data_cadastro") : "Recente";
-                String capaUrl = obterUrlCapa(conn, schema, recordId, title, todasMedias);
+                String capaUrl = urlCapa(capas, recordId);
                 boolean disp = isDisponivel(conn, schema, recordId);
         %>
             <a class="library-book-card" href="?action=search_bibliographic#query=<%= URLEncoder.encode(title, "UTF-8") %>&material=all">
@@ -1978,7 +2120,7 @@ if (!req.isGlobalSchema()) {
                 int recordId = rs5.getInt("record_id");
                 String aluno = rs5.getString("aluno") != null ? rs5.getString("aluno") : "Desconhecido";
                 String livro = rs5.getString("livro") != null ? rs5.getString("livro") : "Livro sem título";
-                String capaUrl = obterUrlCapa(conn, schema, recordId, livro, todasMedias);
+                String capaUrl = urlCapa(capas, recordId);
         %>
             <div class="overdue-card">
                 <div class="overdue-cover" data-title="<%= StringEscapeUtils.escapeHtml4(livro) %>" data-author="">
