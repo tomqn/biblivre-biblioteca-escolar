@@ -28,466 +28,6 @@
 
 	<script type="text/javascript" src="static/scripts/jquery.imgareaselect.js"></script>
 
-	<style type="text/css">
-		/* =================================================================
-		   PADRONIZAÇÃO ULTRA-COMPACTA DARK (CADASTRO E GESTÃO DE USUÁRIOS)
-		   ================================================================= */
-		body, #circulation_user {
-			font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif !important;
-			color: #0f172a;
-		}
-
-		/* LARGURA CONTROLADA (SEM ALONGAR NA TELA) */
-		#circulation_user {
-			max-width: 960px !important;
-			margin: 0 auto !important;
-			padding: 0 8px !important;
-			box-sizing: border-box !important;
-		}
-
-		/* ZERA ESPAÇADORES VERTICAIS */
-		.ncspacer {
-			display: none !important;
-			height: 0 !important;
-			margin: 0 !important;
-		}
-
-		/* AJUDA SUPERIOR COMPACTA */
-		.page_help {
-			background: #f8fafc !important;
-			border: 1px solid #e2e8f0 !important;
-			border-radius: 6px !important;
-			color: #64748b !important;
-			font-size: 11px !important;
-			padding: 5px 10px !important;
-			margin-bottom: 8px !important;
-			line-height: 1.2 !important;
-		}
-
-		/* CABEÇALHO ESCURO COM BOTÃO NOVO USUÁRIO */
-		.page_title {
-			background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
-			border-radius: 8px !important;
-			padding: 8px 14px !important;
-			margin-bottom: 4px !important;
-			display: flex !important;
-			align-items: center !important;
-			justify-content: space-between !important;
-			border: none !important;
-		}
-		.page_title .image {
-			width: 24px !important;
-			height: 24px !important;
-			background: rgba(255, 255, 255, 0.12) !important;
-			border-radius: 5px !important;
-			display: flex !important;
-			align-items: center !important;
-			justify-content: center !important;
-			float: none !important;
-			margin-right: 8px !important;
-		}
-		.page_title .image img {
-			width: 13px !important;
-			height: 13px !important;
-			filter: brightness(0) invert(1) !important;
-		}
-		.page_title .text {
-			font-size: 13px !important;
-			font-weight: 800 !important;
-			color: #ffffff !important;
-			float: none !important;
-			margin: 0 !important;
-			padding: 0 !important;
-			flex: 1 !important;
-		}
-		.page_title .subtext {
-			font-size: 10px !important;
-			font-weight: normal !important;
-			color: #cbd5e1 !important;
-			margin-top: 2px !important;
-		}
-		.page_title .subtext a {
-			color: #93c5fd !important;
-			font-weight: 700 !important;
-			text-decoration: underline !important;
-		}
-		.page_title .buttons {
-			float: none !important;
-			margin: 0 !important;
-		}
-
-		/* BOTÃO NOVO USUÁRIO */
-		.new_record_button {
-			background: #10b981 !important;
-			color: #ffffff !important;
-			border: none !important;
-			border-radius: 6px !important;
-			height: 28px !important;
-			padding: 0 12px !important;
-			font-size: 11px !important;
-			font-weight: 800 !important;
-			display: inline-flex !important;
-			align-items: center !important;
-			cursor: pointer !important;
-			transition: background 0.2s ease !important;
-			white-space: nowrap !important;
-		}
-		.new_record_button:hover {
-			background: #059669 !important;
-			color: #ffffff !important;
-		}
-
-		/* BARRA DE NAVEGAÇÃO */
-		.page_navigation {
-			margin: 4px 0 !important;
-			padding: 0 !important;
-		}
-		.page_navigation .fright {
-			display: inline-flex !important;
-			align-items: center !important;
-			gap: 4px !important;
-		}
-		.page_navigation a.button, .paging_bar a {
-			background: #ffffff !important;
-			border: 1px solid #cbd5e1 !important;
-			color: #334155 !important;
-			border-radius: 5px !important;
-			padding: 3px 8px !important;
-			font-size: 11px !important;
-			font-weight: 700 !important;
-			text-decoration: none !important;
-		}
-		.paging_bar {
-			margin: 4px 0 !important;
-		}
-		.paging_bar span.page.selected {
-			background: #0f172a !important;
-			color: #ffffff !important;
-			border-radius: 5px !important;
-			padding: 2px 7px !important;
-			font-size: 11px !important;
-			font-weight: 800 !important;
-		}
-
-		/* CAIXA DE PESQUISA COMPACTA */
-		.search_box {
-			background: #ffffff !important;
-			border: 1px solid #e2e8f0 !important;
-			border-radius: 8px !important;
-			padding: 8px 12px !important;
-			box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03) !important;
-			margin-top: 4px !important;
-			margin-bottom: 6px !important;
-		}
-		.simple_search {
-			display: flex !important;
-			align-items: center !important;
-			flex-wrap: wrap !important;
-			gap: 8px !important;
-		}
-		.simple_search .query {
-			flex: 1 !important;
-			min-width: 180px !important;
-			float: none !important;
-		}
-		.simple_search .buttons {
-			display: flex !important;
-			align-items: center !important;
-			gap: 6px !important;
-			float: none !important;
-			margin: 0 !important;
-			padding: 0 !important;
-			border: none !important;
-			background: transparent !important;
-			box-shadow: none !important;
-		}
-		.search_label {
-			font-size: 11px !important;
-			font-weight: 600 !important;
-			color: #64748b !important;
-		}
-
-		/* INPUTS E COMBO */
-		input[type="text"].big_input {
-			height: 30px !important;
-			border-radius: 5px !important;
-			border: 1px solid #cbd5e1 !important;
-			padding: 0 10px !important;
-			font-size: 12px !important;
-			font-family: inherit !important;
-			color: #0f172a !important;
-			outline: none !important;
-			box-sizing: border-box !important;
-			width: 100% !important;
-		}
-		input[type="text"].big_input:focus {
-			border-color: #0f172a !important;
-			box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.1) !important;
-		}
-		select.combo {
-			height: 30px !important;
-			border-radius: 5px !important;
-			border: 1px solid #cbd5e1 !important;
-			padding: 0 6px !important;
-			font-size: 11px !important;
-			font-weight: 600 !important;
-			color: #0f172a !important;
-			background: #ffffff !important;
-			outline: none !important;
-		}
-
-		/* BOTÃO LISTAR TODOS / PESQUISAR ESCURO */
-		.main_button {
-			background: #0f172a !important;
-			color: #ffffff !important;
-			border: none !important;
-			border-radius: 5px !important;
-			height: 30px !important;
-			padding: 0 12px !important;
-			font-size: 11px !important;
-			font-weight: 700 !important;
-			cursor: pointer !important;
-			display: inline-flex !important;
-			align-items: center !important;
-			justify-content: center !important;
-			transition: background 0.2s ease !important;
-			white-space: nowrap !important;
-		}
-		.main_button:hover {
-			background: #1e293b !important;
-			color: #ffffff !important;
-		}
-
-		/* CARDS DE RESULTADOS */
-		.search_results_area {
-			margin-top: 4px !important;
-		}
-		.search_results_box {
-			background: transparent !important;
-			border: none !important;
-		}
-		.search_results .result {
-			background: #ffffff !important;
-			border: 1px solid #e2e8f0 !important;
-			border-radius: 6px !important;
-			padding: 6px 12px !important;
-			margin-bottom: 5px !important;
-			display: flex !important;
-			align-items: center !important;
-			justify-content: space-between !important;
-			gap: 10px !important;
-		}
-		.search_results .result .record {
-			flex: 1 !important;
-			font-size: 11px !important;
-			line-height: 1.3 !important;
-			color: #334155 !important;
-		}
-		.search_results .result .record label {
-			font-weight: 700 !important;
-			color: #0f172a !important;
-			display: inline-block !important;
-			min-width: 85px !important;
-		}
-
-		/* ZERA ÁREA DOS BOTÕES (SEM BALÃO VERDE) */
-		.search_results .result .buttons {
-			background: transparent !important;
-			border: none !important;
-			padding: 0 !important;
-			margin: 0 !important;
-			box-shadow: none !important;
-			display: flex !important;
-			align-items: center !important;
-			gap: 6px !important;
-			flex-shrink: 0 !important;
-		}
-
-		/* BOTÕES ABRIR E BLOQUEAR */
-		.search_results .result .buttons a.button {
-			border-radius: 5px !important;
-			height: 26px !important;
-			padding: 0 10px !important;
-			font-size: 11px !important;
-			font-weight: 700 !important;
-			cursor: pointer !important;
-			text-decoration: none !important;
-			display: inline-flex !important;
-			align-items: center !important;
-			white-space: nowrap !important;
-			border: none !important;
-		}
-		a[rel="open_item"] {
-			background: #0f172a !important;
-			color: #ffffff !important;
-		}
-		a[rel="open_item"]:hover {
-			background: #1e293b !important;
-		}
-		a[rel="block_user"] {
-			background: #fef2f2 !important;
-			color: #dc2626 !important;
-			border: 1px solid #fecaca !important;
-		}
-		a[rel="block_user"]:hover {
-			background: #dc2626 !important;
-			color: #ffffff !important;
-		}
-		a[rel="unblock_user"] {
-			background: #ecfdf5 !important;
-			color: #059669 !important;
-			border: 1px solid #a7f3d0 !important;
-		}
-
-		/* STATUS COMPACTO */
-		.record div[class*="user_status_"] {
-			display: inline-flex !important;
-			align-items: center !important;
-			font-size: 10px !important;
-			font-weight: 700 !important;
-			padding: 1px 5px !important;
-			border-radius: 3px !important;
-		}
-		.record .user_status_active, .record .user_status_0 {
-			background: #ecfdf5 !important;
-			color: #059669 !important;
-			border: 1px solid #a7f3d0 !important;
-		}
-		.record .user_status_blocked, .record .user_status_1 {
-			background: #fef2f2 !important;
-			color: #dc2626 !important;
-			border: 1px solid #fecaca !important;
-		}
-
-		/* ABAS (TABS) COMPACTAS E MODERNAS */
-		.tabs_head {
-			display: flex !important;
-			gap: 4px !important;
-			border-bottom: 2px solid #e2e8f0 !important;
-			margin: 8px 0 !important;
-			padding: 0 !important;
-			list-style: none !important;
-		}
-		.tabs_head li.tab {
-			padding: 6px 14px !important;
-			font-size: 12px !important;
-			font-weight: 700 !important;
-			color: #64748b !important;
-			border-radius: 6px 6px 0 0 !important;
-			cursor: pointer !important;
-			background: #f1f5f9 !important;
-			transition: all 0.2s ease !important;
-		}
-		.tabs_head li.tab:hover {
-			color: #0f172a !important;
-			background: #e2e8f0 !important;
-		}
-		.tabs_head li.tab.selected {
-			background: #0f172a !important;
-			color: #ffffff !important;
-		}
-
-		/* CARTÃO DO LEITOR SELECIONADO COMPACTO */
-		.selected_highlight {
-			background: #ffffff !important;
-			border: 1px solid #cbd5e1 !important;
-			border-radius: 8px !important;
-			padding: 10px 14px !important;
-			margin-bottom: 8px !important;
-			display: flex !important;
-			align-items: center !important;
-			gap: 12px !important;
-		}
-		.selected_highlight .user_photo {
-			width: 65px !important;
-			height: 65px !important;
-			border-radius: 6px !important;
-			border: 1px solid #e2e8f0 !important;
-			object-fit: cover !important;
-			margin: 0 !important;
-		}
-		.selected_highlight .record {
-			flex: 1 !important;
-			font-size: 11px !important;
-			line-height: 1.35 !important;
-		}
-		.selected_highlight .buttons.photo_buttons {
-			display: flex !important;
-			flex-direction: column !important;
-			gap: 4px !important;
-			background: transparent !important;
-			border: none !important;
-			padding: 0 !important;
-			margin: 0 !important;
-		}
-		.selected_highlight .buttons a.button, .selected_highlight .buttons a.danger_button {
-			border-radius: 4px !important;
-			padding: 4px 10px !important;
-			font-size: 10px !important;
-			font-weight: 700 !important;
-			text-align: center !important;
-		}
-
-		/* FORMULÁRIO DE CADASTRO/EDIÇÃO */
-		.tab_body.biblivre_form_body {
-			background: #ffffff !important;
-			border: 1px solid #e2e8f0 !important;
-			border-radius: 8px !important;
-			padding: 12px !important;
-			margin-bottom: 8px !important;
-		}
-		.field {
-			margin-bottom: 8px !important;
-			display: flex !important;
-			align-items: center !important;
-		}
-		.field .label {
-			width: 140px !important;
-			font-size: 11px !important;
-			font-weight: 700 !important;
-			color: #0f172a !important;
-		}
-		.field .value {
-			flex: 1 !important;
-		}
-		.field .value input[type="text"], .field .value select {
-			height: 28px !important;
-			border-radius: 4px !important;
-			border: 1px solid #cbd5e1 !important;
-			padding: 0 8px !important;
-			font-size: 11px !important;
-			outline: none !important;
-			width: 100% !important;
-			max-width: 380px !important;
-			box-sizing: border-box !important;
-		}
-
-		/* BOTÕES DO RODAPÉ (SALVAR / CANCELAR) */
-		.footer_buttons {
-			margin-top: 8px !important;
-			display: flex !important;
-			gap: 6px !important;
-		}
-		.footer_buttons a.button, .footer_buttons a.main_button {
-			border-radius: 5px !important;
-			height: 28px !important;
-			padding: 0 12px !important;
-			font-size: 11px !important;
-			font-weight: 700 !important;
-			display: inline-flex !important;
-			align-items: center !important;
-		}
-
-		/* POPUP */
-		.popup {
-			background: #ffffff !important;
-			border: 1px solid #cbd5e1 !important;
-			border-radius: 8px !important;
-			box-shadow: 0 10px 24px rgba(15, 23, 42, 0.2) !important;
-			padding: 14px !important;
-		}
-	</style>
-
 	<script type="text/javascript">
 		var CirculationSearch = CreateSearch(CirculationSearchClass, {
 			type: 'circulation.user',
@@ -516,6 +56,504 @@
 			});
 		});
 	</script>
+
+	<!-- ==================================================================
+	     CSS CLEAN — CADASTRO E GESTÃO DE USUÁRIOS
+	     Paleta: slate dark (#0f172a / #1e293b) + verde (#10b981)
+	     ================================================================== -->
+	<style type="text/css">
+		#circulation_user {
+			font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif !important;
+			color: #0f172a;
+			max-width: 960px !important;
+			margin: 0 auto !important;
+			padding: 0 12px !important;
+			box-sizing: border-box !important;
+			background: transparent !important;
+		}
+
+		#circulation_user .ncspacer {
+			display: none !important;
+		}
+
+		/* AJUDA SUPERIOR */
+		.page_help {
+			background: transparent !important;
+			border: none !important;
+			color: #94a3b8 !important;
+			font-size: 11px !important;
+			padding: 4px 2px !important;
+			margin: 0 0 8px 0 !important;
+			line-height: 1.3 !important;
+		}
+
+		/* CABEÇALHO ESCURO */
+		#circulation_user .page_title {
+			background: #0f172a !important;
+			border-radius: 10px !important;
+			padding: 12px 16px !important;
+			margin-bottom: 10px !important;
+			display: flex !important;
+			align-items: center !important;
+			justify-content: space-between !important;
+			border: none !important;
+			box-shadow: none !important;
+		}
+		#circulation_user .page_title .image {
+			width: 26px !important;
+			height: 26px !important;
+			background: rgba(255, 255, 255, 0.08) !important;
+			border-radius: 6px !important;
+			display: flex !important;
+			align-items: center !important;
+			justify-content: center !important;
+			float: none !important;
+			margin-right: 10px !important;
+		}
+		#circulation_user .page_title .image img {
+			width: 14px !important;
+			height: 14px !important;
+			filter: brightness(0) invert(1) !important;
+		}
+		#circulation_user .page_title .simple_search,
+		#circulation_user .page_title .advanced_search {
+			font-size: 13px !important;
+			font-weight: 700 !important;
+			color: #ffffff !important;
+			float: none !important;
+			margin: 0 !important;
+			padding: 0 !important;
+			flex: 1 !important;
+			letter-spacing: 0.2px !important;
+		}
+		#circulation_user .page_title .subtext {
+			font-size: 10px !important;
+			font-weight: 400 !important;
+			color: #94a3b8 !important;
+			margin-top: 3px !important;
+		}
+		#circulation_user .page_title .subtext a {
+			color: #93c5fd !important;
+			font-weight: 600 !important;
+			text-decoration: none !important;
+		}
+		#circulation_user .page_title .subtext a:hover {
+			text-decoration: underline !important;
+		}
+		#circulation_user .page_title .buttons {
+			float: none !important;
+			margin: 0 !important;
+		}
+
+		#circulation_user .new_record_button {
+			background: #10b981 !important;
+			color: #ffffff !important;
+			border: none !important;
+			border-radius: 7px !important;
+			height: 30px !important;
+			padding: 0 14px !important;
+			font-size: 11px !important;
+			font-weight: 700 !important;
+			display: inline-flex !important;
+			align-items: center !important;
+			cursor: pointer !important;
+			transition: background 0.15s ease !important;
+			white-space: nowrap !important;
+			text-decoration: none !important;
+		}
+		#circulation_user .new_record_button:hover {
+			background: #059669 !important;
+		}
+
+		/* NAVEGAÇÃO DISCRETA */
+		#circulation_user .page_navigation {
+			margin: 6px 0 !important;
+			padding: 0 !important;
+			min-height: 0 !important;
+		}
+		#circulation_user .page_navigation .fright {
+			display: inline-flex !important;
+			align-items: center !important;
+			gap: 6px !important;
+		}
+		#circulation_user .page_navigation a.button,
+		#circulation_user .paging_bar a {
+			background: transparent !important;
+			border: none !important;
+			color: #64748b !important;
+			border-radius: 6px !important;
+			padding: 4px 8px !important;
+			font-size: 11px !important;
+			font-weight: 600 !important;
+			text-decoration: none !important;
+			transition: background 0.15s ease !important;
+		}
+		#circulation_user .page_navigation a.button:hover,
+		#circulation_user .paging_bar a:hover {
+			background: #f1f5f9 !important;
+			color: #0f172a !important;
+		}
+		#circulation_user .paging_bar {
+			margin: 6px 0 !important;
+			display: flex !important;
+			align-items: center !important;
+			gap: 2px !important;
+		}
+		#circulation_user .paging_bar span.page {
+			background: transparent !important;
+			border: none !important;
+			color: #64748b !important;
+			border-radius: 6px !important;
+			padding: 4px 9px !important;
+			font-size: 11px !important;
+			font-weight: 600 !important;
+			cursor: pointer !important;
+		}
+		#circulation_user .paging_bar span.page:hover {
+			background: #f1f5f9 !important;
+			color: #0f172a !important;
+		}
+		#circulation_user .paging_bar span.page.selected {
+			background: #0f172a !important;
+			color: #ffffff !important;
+			font-weight: 700 !important;
+		}
+
+		/* CAIXA DE PESQUISA */
+		#circulation_user .search_box {
+			background: #ffffff !important;
+			border: 1px solid #e2e8f0 !important;
+			border-radius: 10px !important;
+			padding: 10px 14px !important;
+			box-shadow: none !important;
+			margin: 8px 0 !important;
+		}
+		#circulation_user .search_box .search_label {
+			font-size: 11px !important;
+			font-weight: 500 !important;
+			color: #64748b !important;
+			display: inline-block !important;
+			margin-right: 4px !important;
+		}
+		#circulation_user input[type="text"].big_input {
+			height: 34px !important;
+			border-radius: 8px !important;
+			border: 1px solid #e2e8f0 !important;
+			padding: 0 12px !important;
+			font-size: 12px !important;
+			font-family: inherit !important;
+			color: #0f172a !important;
+			outline: none !important;
+			box-sizing: border-box !important;
+			width: 100% !important;
+			transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+			background: #ffffff !important;
+		}
+		#circulation_user input[type="text"].big_input::placeholder {
+			color: #94a3b8 !important;
+		}
+		#circulation_user input[type="text"].big_input:focus {
+			border-color: #0f172a !important;
+			box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.06) !important;
+		}
+		#circulation_user input[type="text"].small_input {
+			height: 30px !important;
+			border-radius: 8px !important;
+			border: 1px solid #e2e8f0 !important;
+			padding: 0 10px !important;
+			font-size: 11px !important;
+			box-sizing: border-box !important;
+		}
+		#circulation_user select.combo {
+			height: 34px !important;
+			border-radius: 8px !important;
+			border: 1px solid #e2e8f0 !important;
+			padding: 0 10px !important;
+			font-size: 12px !important;
+			font-weight: 500 !important;
+			color: #0f172a !important;
+			background: #ffffff !important;
+			outline: none !important;
+		}
+
+		#circulation_user .main_button {
+			background: #0f172a !important;
+			color: #ffffff !important;
+			border: none !important;
+			border-radius: 8px !important;
+			height: 34px !important;
+			padding: 0 16px !important;
+			font-size: 12px !important;
+			font-weight: 600 !important;
+			cursor: pointer !important;
+			display: inline-flex !important;
+			align-items: center !important;
+			justify-content: center !important;
+			transition: background 0.15s ease !important;
+			white-space: nowrap !important;
+			text-decoration: none !important;
+		}
+		#circulation_user .main_button:hover {
+			background: #1e293b !important;
+		}
+
+		/* RESULTADOS */
+		#circulation_user .search_results_area {
+			margin-top: 8px !important;
+		}
+		#circulation_user .search_results .result {
+			background: #ffffff !important;
+			border: 1px solid #f1f5f9 !important;
+			border-radius: 10px !important;
+			padding: 12px 16px !important;
+			margin-bottom: 8px !important;
+			display: flex !important;
+			align-items: center !important;
+			justify-content: space-between !important;
+			gap: 14px !important;
+			transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+		}
+		#circulation_user .search_results .result:hover {
+			border-color: #e2e8f0 !important;
+			box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04) !important;
+		}
+		#circulation_user .search_results .result .record {
+			flex: 1 !important;
+			font-size: 12px !important;
+			line-height: 1.6 !important;
+			color: #475569 !important;
+		}
+		#circulation_user .search_results .result .record label {
+			font-weight: 600 !important;
+			color: #0f172a !important;
+			display: inline !important;
+		}
+		#circulation_user .search_results .result .record strong {
+			color: #0f172a !important;
+			font-weight: 700 !important;
+		}
+		#circulation_user .search_results .result .buttons {
+			background: transparent !important;
+			border: none !important;
+			padding: 0 !important;
+			margin: 0 !important;
+			box-shadow: none !important;
+			display: flex !important;
+			align-items: center !important;
+			gap: 8px !important;
+			flex-shrink: 0 !important;
+		}
+		#circulation_user .search_results .result .buttons a.button {
+			border-radius: 7px !important;
+			height: 30px !important;
+			padding: 0 14px !important;
+			font-size: 11px !important;
+			font-weight: 600 !important;
+			cursor: pointer !important;
+			text-decoration: none !important;
+			display: inline-flex !important;
+			align-items: center !important;
+			white-space: nowrap !important;
+			border: 1px solid transparent !important;
+			background: #f1f5f9 !important;
+			color: #475569 !important;
+			transition: all 0.15s ease !important;
+		}
+		#circulation_user .search_results .result .buttons a[rel="open_item"] {
+			background: #0f172a !important;
+			color: #ffffff !important;
+		}
+		#circulation_user .search_results .result .buttons a[rel="open_item"]:hover {
+			background: #1e293b !important;
+		}
+		#circulation_user .search_results .result .buttons a[rel="block_user"] {
+			background: #ffffff !important;
+			color: #dc2626 !important;
+			border-color: #fecaca !important;
+		}
+		#circulation_user .search_results .result .buttons a[rel="block_user"]:hover {
+			background: #fef2f2 !important;
+		}
+		#circulation_user .search_results .result .buttons a[rel="unblock_user"] {
+			background: #ffffff !important;
+			color: #059669 !important;
+			border-color: #a7f3d0 !important;
+		}
+		#circulation_user .search_results .result .buttons a[rel="unblock_user"]:hover {
+			background: #ecfdf5 !important;
+		}
+
+		/* STATUS PILLS */
+		#circulation_user .user_status_active,
+		#circulation_user .user_status_0 {
+			background: #ecfdf5 !important;
+			color: #059669 !important;
+			border: none !important;
+			padding: 2px 8px !important;
+			border-radius: 999px !important;
+			font-size: 10px !important;
+			font-weight: 600 !important;
+			display: inline-block !important;
+		}
+		#circulation_user .user_status_blocked,
+		#circulation_user .user_status_1 {
+			background: #fef2f2 !important;
+			color: #dc2626 !important;
+			border: none !important;
+			padding: 2px 8px !important;
+			border-radius: 999px !important;
+			font-size: 10px !important;
+			font-weight: 600 !important;
+			display: inline-block !important;
+		}
+		#circulation_user .user_status_inactive {
+			background: #f1f5f9 !important;
+			color: #64748b !important;
+			border: none !important;
+			padding: 2px 8px !important;
+			border-radius: 999px !important;
+			font-size: 10px !important;
+			font-weight: 600 !important;
+			display: inline-block !important;
+		}
+
+		/* ABAS CLEAN */
+		#circulation_user .tabs_head {
+			display: flex !important;
+			gap: 2px !important;
+			border-bottom: 1px solid #e2e8f0 !important;
+			margin: 12px 0 0 0 !important;
+			padding: 0 !important;
+			list-style: none !important;
+		}
+		#circulation_user .tabs_head li.tab {
+			padding: 8px 16px !important;
+			font-size: 12px !important;
+			font-weight: 600 !important;
+			color: #64748b !important;
+			border-radius: 0 !important;
+			cursor: pointer !important;
+			background: transparent !important;
+			transition: color 0.15s ease !important;
+			border-bottom: 2px solid transparent !important;
+			margin-bottom: -1px !important;
+		}
+		#circulation_user .tabs_head li.tab:hover {
+			color: #0f172a !important;
+		}
+		#circulation_user .tabs_head li.tab.selected {
+			color: #0f172a !important;
+			border-bottom-color: #0f172a !important;
+			background: transparent !important;
+		}
+
+		/* CARTÃO DO LEITOR SELECIONADO */
+		#circulation_user .selected_highlight {
+			background: #ffffff !important;
+			border: 1px solid #e2e8f0 !important;
+			border-radius: 12px !important;
+			padding: 14px 18px !important;
+			margin-bottom: 10px !important;
+			display: flex !important;
+			align-items: center !important;
+			gap: 16px !important;
+			box-shadow: none !important;
+		}
+		#circulation_user .selected_highlight .user_photo {
+			width: 72px !important;
+			height: 72px !important;
+			border-radius: 10px !important;
+			border: 1px solid #e2e8f0 !important;
+			object-fit: cover !important;
+			margin: 0 !important;
+		}
+		#circulation_user .selected_highlight .record {
+			flex: 1 !important;
+			font-size: 12px !important;
+			line-height: 1.6 !important;
+			color: #475569 !important;
+		}
+
+		/* FORMULÁRIO */
+		#circulation_user .tab_body.biblivre_form_body {
+			background: #ffffff !important;
+			border: 1px solid #e2e8f0 !important;
+			border-radius: 12px !important;
+			padding: 18px 20px !important;
+			margin-top: 10px !important;
+			margin-bottom: 10px !important;
+			box-shadow: none !important;
+		}
+		#circulation_user .field {
+			margin-bottom: 12px !important;
+			display: flex !important;
+			align-items: center !important;
+		}
+		#circulation_user .field .label {
+			width: 150px !important;
+			font-size: 12px !important;
+			font-weight: 600 !important;
+			color: #475569 !important;
+		}
+		#circulation_user .field .value {
+			flex: 1 !important;
+		}
+		#circulation_user .field .value input[type="text"],
+		#circulation_user .field .value select {
+			height: 34px !important;
+			border-radius: 8px !important;
+			border: 1px solid #e2e8f0 !important;
+			padding: 0 12px !important;
+			font-size: 12px !important;
+			outline: none !important;
+			width: 100% !important;
+			max-width: 420px !important;
+			box-sizing: border-box !important;
+			background: #ffffff !important;
+			transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+		}
+		#circulation_user .field .value input[type="text"]:focus,
+		#circulation_user .field .value select:focus {
+			border-color: #0f172a !important;
+			box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.06) !important;
+		}
+
+		/* RODAPÉ */
+		#circulation_user .footer_buttons {
+			margin-top: 12px !important;
+			display: flex !important;
+			gap: 8px !important;
+		}
+		#circulation_user .footer_buttons a.button,
+		#circulation_user .footer_buttons a.main_button {
+			border-radius: 8px !important;
+			height: 34px !important;
+			padding: 0 16px !important;
+			font-size: 12px !important;
+			font-weight: 600 !important;
+			display: inline-flex !important;
+			align-items: center !important;
+			text-decoration: none !important;
+		}
+		#circulation_user .footer_buttons a.button {
+			background: #ffffff !important;
+			color: #475569 !important;
+			border: 1px solid #e2e8f0 !important;
+		}
+		#circulation_user .footer_buttons a.button:hover {
+			background: #f8fafc !important;
+			color: #0f172a !important;
+		}
+
+		/* POPUP */
+		#photo_upload_popup.popup {
+			background: #ffffff !important;
+			border: 1px solid #e2e8f0 !important;
+			border-radius: 12px !important;
+			box-shadow: 0 12px 32px rgba(15, 23, 42, 0.15) !important;
+			padding: 20px !important;
+		}
+	</style>
 	<link rel="stylesheet" type="text/css" href="static/styles/biblivre.modern.css" />
 </layout:head>
 
@@ -543,7 +581,7 @@
 			</div>
 
 			<div class="buttons">
-				<a class="button center new_record_button" onclick="CirculationInput.newRecord();">➕ <i18n:text key="circulation.user.button.new" /></a>
+				<a class="button center new_record_button" onclick="CirculationInput.newRecord();"><i18n:text key="circulation.user.button.new" /></a>
 			</div>
 			
 			<div class="clear"></div>
@@ -553,9 +591,9 @@
 			<a href="javascript:void(0);" class="button paging_button back_to_search" onclick="CirculationSearch.closeResult();"><i18n:text key="search.common.back_to_search" /></a>
 
 			<div class="fright">
-				<a href="javascript:void(0);" class="button paging_button paging_button_prev" onclick="CirculationSearch.previousResult();">‹ <i18n:text key="search.common.previous" /></a>
+				<a href="javascript:void(0);" class="button paging_button paging_button_prev" onclick="CirculationSearch.previousResult();"><i18n:text key="search.common.previous" /></a>
 				<span class="search_count"></span>
-				<a href="javascript:void(0);" class="button paging_button paging_button_next" onclick="CirculationSearch.nextResult();"><i18n:text key="search.common.next" /> ›</a>
+				<a href="javascript:void(0);" class="button paging_button paging_button_next" onclick="CirculationSearch.nextResult();"><i18n:text key="search.common.next" /></a>
 			</div>
 
 			<div class="clear"></div>
@@ -587,12 +625,13 @@
 				<img class="user_photo" src="static/images/photo.png"/>
 			{#/if}
 			<div class="record">
-				{#if $T.name}<label><i18n:text key="circulation.user_field.name" /></label>: <strong>{$T.name}</strong><br/>{#/if}
+				{#if $T.name}<label><i18n:text key="circulation.user_field.name" /></label>: {$T.name}<br/>{#/if}
 				<label><i18n:text key="circulation.user_field.id" /></label>: {$T.enrollment}<br/>
 				{#if $T.type}<label><i18n:text key="circulation.user_field.type" /></label>: {$T.type_name}<br/>{#/if}
 				<div class="user_status_{$T.status}"><label><i18n:text key="circulation.user_field.status" /></label>: {_('circulation.user_status.' + $T.status)}</div>
 	
-				<div class="ncspacer"></div>				
+				<div class="ncspacer"></div>
+				<div class="ncspacer"></div>						
 				{#if $T.created}<label><i18n:text key="common.created" /></label>: {_d($T.created, 'd t')}{#/if} 
 				{#if $T.modified && $T.modified != $T.created}<br/><label><i18n:text key="common.modified" /></label>: {_d($T.modified, 'd t')}{#/if}
 			</div>
@@ -620,7 +659,7 @@
 	
 						<div class="field">
 							<div class="label"><i18n:text key="circulation.user_field.id" /></div>
-							<div class="value"><div class="text"><strong>{$T.enrollment}</strong></div></div>
+							<div class="value"><div class="text">{$T.enrollment}</div></div>
 							<div class="clear"></div>	
 						</div>
 	
@@ -666,26 +705,32 @@
 							{#foreach $T.data as info}
 								<div class="result user_lending {#if $T.info.lending.returnDate}user_lending_returned_lending{#else}user_lending_active_lending{#/if}" rel="{$T.info.lending.id}">
 									<div class="record">
-										{#if $T.info.biblio.title}<label><i18n:text key="search.bibliographic.title" /></label>: <strong>{$T.info.biblio.title}</strong><br/>{#/if}
+										{#if $T.info.biblio.title}<label><i18n:text key="search.bibliographic.title" /></label>: {$T.info.biblio.title}<br/>{#/if}
 										{#if $T.info.biblio.author}<label><i18n:text key="search.bibliographic.author" /></label>: {$T.info.biblio.author}<br/>{#/if}
 										{#if $T.info.biblio.publication_year}<label><i18n:text key="search.bibliographic.publication_year" /></label>: {$T.info.biblio.publication_year}<br/>{#/if}
 										{#if $T.info.biblio.shelf_location || $T.info.holding.location_d}
 											<label><i18n:text key="search.bibliographic.shelf_location" /></label>: {$T.info.biblio.shelf_location || ''} {$T.info.holding.location_d || ''}<br/>
 										{#/if}
 										{#if $T.info.biblio.isbn}<label><i18n:text key="search.bibliographic.isbn" /></label>: {$T.info.biblio.isbn}<br/>{#/if}
+										{#if $T.info.biblio.issn}<label><i18n:text key="search.bibliographic.issn" /></label>: {$T.info.biblio.issn}<br/>{#/if}
+										{#if $T.info.biblio.isrc}<label><i18n:text key="search.bibliographic.isrc" /></label>: {$T.info.biblio.isrc}<br/>{#/if}
 		
+										<div class="ncspacer"></div>
 										<div class="ncspacer"></div>						
 		
-										<label><i18n:text key="search.holding.accession_number" /></label>: <strong>{$T.info.holding.accession_number}</strong><br/>
+										<label><i18n:text key="search.holding.accession_number" /></label>: {$T.info.holding.accession_number}<br/>
 										<label><i18n:text key="circulation.lending.lending_date" /></label>: {_d($T.info.lending.created,'f')}<br/>
 										{#if $T.info.lending.returnDate}
 											<label><i18n:text key="circulation.lending.return_date" /></label>: {_d($T.info.lending.returnDate, 'f')}<br/>
 										{#else}
-											<label><i18n:text key="circulation.lending.expected_return_date" /></label>: <strong>{_d($T.info.lending.expectedReturnDate, 'D')}</strong><br/>
+											<label><i18n:text key="circulation.lending.expected_return_date" /></label>: {_d($T.info.lending.expectedReturnDate, 'D')}<br/>
 
 											{#if $T.info.lending.daysLate > 0}
 												<div class="ncspacer"></div>
-												<label><i18n:text key="circulation.lending.days_late" /></label>: <span class="value_error">{ _f($T.info.lending.daysLate || 0) } dias</span><br/>
+												<div class="ncspacer"></div>
+			
+												<label><i18n:text key="circulation.lending.days_late" /></label>: <span class="value_error">{ _f($T.info.lending.daysLate || 0) }</span><br/>
+												<label><i18n:text key="circulation.lending.daily_fine" /></label>: <%= Configurations.getString((String) request.getAttribute("schema"), Constants.CONFIG_CURRENCY) %> {_f($T.info.lending.dailyFine || 0, 'n2') }<br/>
 												<label><i18n:text key="circulation.lending.estimated_fine" /></label>: <span class="value_error"><%= Configurations.getString((String) request.getAttribute("schema"), Constants.CONFIG_CURRENCY) %> {_f($T.info.lending.estimatedFine || 0, 'n2') }</span><br/>
 											{#/if}
 										{#/if}		
@@ -701,7 +746,7 @@
 								</div>
 							{#/for}
 						{#else}
-							<p style="padding: 10px; color: #64748b; font-size: 11px;"><i18n:text key="circulation.user.no_lendings" /></p>
+							<p><i18n:text key="circulation.user.no_lendings" /></p>
 						{#/if}
 					--></textarea>
 				</div>
@@ -714,8 +759,17 @@
 							{#foreach $T.data[0].reservationInfoList as info}
 								<div class="result user_reservation" rel="{$T.info.id}">
 									<div class="record">
-										{#if $T.info.biblio.title}<label><i18n:text key="search.bibliographic.title" /></label>: <strong>{$T.info.biblio.title}</strong><br/>{#/if}
+										{#if $T.info.biblio.title}<label><i18n:text key="search.bibliographic.title" /></label>: {$T.info.biblio.title}<br/>{#/if}
 										{#if $T.info.biblio.author}<label><i18n:text key="search.bibliographic.author" /></label>: {$T.info.biblio.author}<br/>{#/if}
+										{#if $T.info.biblio.publication_year}<label><i18n:text key="search.bibliographic.publication_year" /></label>: {$T.info.biblio.publication_year}<br/>{#/if}
+										{#if $T.info.biblio.shelf_location}<label><i18n:text key="search.bibliographic.shelf_location" /></label>: {$T.info.biblio.shelf_location}<br/>{#/if}
+										{#if $T.info.biblio.isbn}<label><i18n:text key="search.bibliographic.isbn" /></label>: {$T.info.biblio.isbn}<br/>{#/if}
+										{#if $T.info.biblio.issn}<label><i18n:text key="search.bibliographic.issn" /></label>: {$T.info.biblio.issn}<br/>{#/if}
+										{#if $T.info.biblio.isrc}<label><i18n:text key="search.bibliographic.isrc" /></label>: {$T.info.biblio.isrc}<br/>{#/if}
+		
+										<div class="ncspacer"></div>
+										<div class="ncspacer"></div>
+		
 										<label><i18n:text key="circulation.reservation.reserve_date" /></label>: {_d($T.info.reservation.created, 'f')}<br/>
 										<label><i18n:text key="circulation.reservation.expiration_date" /></label>: {_d($T.info.reservation.expires, 'D')}<br/>
 									</div>
@@ -723,7 +777,7 @@
 								</div>
 							{#/for}
 						{#else}
-							<p style="padding: 10px; color: #64748b; font-size: 11px;"><i18n:text key="circulation.user.no_reserves" /></p>
+							<p><i18n:text key="circulation.user.no_reserves" /></p>
 						{#/if}
 					--></textarea>
 				</div>
@@ -736,12 +790,13 @@
 							{#foreach $T.data as info}
 								<div class="result user_fines" rel="{$T.info.id}">
 									<div class="record">
-										{#if $T.info.title}<label><i18n:text key="search.bibliographic.title" /></label>: <strong>{$T.info.title}</strong><br/>{#/if}
+										{#if $T.info.title}<label><i18n:text key="search.bibliographic.title" /></label>: {$T.info.title}<br/>{#/if}
+										{#if $T.info.author}<label><i18n:text key="search.bibliographic.author" /></label>: {$T.info.author}<br/>{#/if}
 										<label><i18n:text key="circulation.lending.fine_value" /></label>: <%= Configurations.getString((String) request.getAttribute("schema"), Constants.CONFIG_CURRENCY) %> {_f($T.info.value || 0, 'n2')}<br/>
 										
 										{#if $T.info.payment}<label><i18n:text key="circulation.lending.payment_date" /></label>: {_d($T.info.payment, 'D')}<br/>
 										{#else}
-											<div class="description" style="color:#dc2626; font-weight:700;">
+											<div class="description">
 												<p><i18n:text key="circulation.user.fine.pending" /></p>
 											</div>
 										{#/if}
@@ -756,7 +811,7 @@
 								</div>
 							{#/for}
 						{#else}
-							<p style="padding: 10px; color: #64748b; font-size: 11px;"><i18n:text key="circulation.user.no_fines" /></p>
+							<p><i18n:text key="circulation.user.no_fines" /></p>
 						{#/if}
 					--></textarea>
 				</div>
@@ -767,7 +822,7 @@
 				<div class="tab_extra_content biblivre_form" data-tab="form">
 					<div id="biblivre_circulation_form"></div>
 					<textarea id="biblivre_circulation_form_template" class="template"><!-- 
-						<fieldset style="border:none; padding:0; margin:0;">
+						<fieldset>
 							<div class="fields">
 								{#foreach CirculationInput.userFields as userfield}
 									<div class="field">
@@ -805,26 +860,25 @@
 			
 			<div class="footer_buttons">
 				<div class="edit">
-					<a class="main_button center" onclick="CirculationInput.saveRecord();">💾 <i18n:text key="common.save" /></a>
+					<a class="main_button center" onclick="CirculationInput.saveRecord();"><i18n:text key="common.save" /></a>
 					<a class="button center" onclick="CirculationInput.saveRecord(true);"><i18n:text key="common.save_as_new" /></a>
 					<a class="button center" onclick="CirculationInput.cancelEdit();"><i18n:text key="common.cancel" /></a>
 				</div>
 				
 				<div class="new">
-					<a class="main_button center" onclick="CirculationInput.saveRecord();">💾 <i18n:text key="common.save" /></a>
+					<a class="main_button center" onclick="CirculationInput.saveRecord();"><i18n:text key="common.save" /></a>
 					<a class="button center" onclick="CirculationInput.cancelEdit();"><i18n:text key="common.cancel" /></a>
 				</div>
 			</div>	
 		</div>
-	
-		<!-- CAIXA DE PESQUISA -->
+			
 		<div class="search_box">
 			<div class="simple_search submit_on_enter">
 				<div class="query">
 					<input type="text" name="query" class="big_input auto_focus" placeholder="<i18n:text key="search.user.simple_term_title" />"/>
 				</div>
 				<div class="buttons">
-					<label class="search_label"><i18n:text key="search.user.field" />:</label>
+					<label class="search_label"><i18n:text key="search.user.field" /></label>
 					<select name="field" class="combo">
 						<option value=""><i18n:text key="search.user.name_or_id" /></option>
 						<c:forEach var="field" items="<%= UserFields.getSearchableFields((String) request.getAttribute(\"schema\")) %>" >
@@ -839,8 +893,8 @@
 				<div class="query">
 					<input type="text" name="query" class="big_input auto_focus" placeholder="<i18n:text key="search.user.simple_term_title" />"/>
 				</div>
-				<div class="filter_search" style="margin-top: 6px;">
-					<div class="fleft filter_field" style="margin-right: 8px;">
+				<div class="filter_search">
+					<div class="fleft filter_field">
 						<label class="search_label"><i18n:text key="search.user.field" /></label>
 						<select name="field" class="combo combo_expand">
 							<option value=""><i18n:text key="search.user.name_or_id" /></option>
@@ -849,22 +903,42 @@
 							</c:forEach>
 						</select>
 					</div>
-					<div class="fleft filter_date" style="margin-right: 8px;">
+					<div class="fleft filter_date">
 						<label class="search_label"><i18n:text key="search.common.registered_between" /></label>
-						<input type="text" name="created_start" class="small_input datepicker" style="width:75px;" /> - <input type="text" name="created_end" class="small_input datepicker" style="width:75px;" />
+						<input type="text" name="created_start" class="small_input datepicker" />-<input type="text" name="created_end" class="small_input datepicker" />
+					</div>
+					<div class="fleft filter_date">
+						<label class="search_label"><i18n:text key="search.common.modified_between" /></label>
+						<input type="text" name="modified_start" class="small_input datepicker" />-<input type="text" name="modified_end" class="small_input datepicker" />
 					</div>
 					<div class="clear"></div>
-					<div class="filter_checkbox" style="margin-top: 4px;">
+					<div class="filter_checkbox">
 						<input type="checkbox" name="users_with_pending_fines" id="users_with_pending_fines" value="true">
 						<label class="search_label" for="users_with_pending_fines"><i18n:text key="circulation.user.users_with_pending_fines" /></label>
 					</div>
+					<div class="filter_checkbox">
+						<input type="checkbox" name="users_with_late_lendings" id="users_with_late_lendings" value="true">
+						<label class="search_label" for="users_with_late_lendings"><i18n:text key="circulation.user.users_with_late_lendings" /></label>
+					</div>
+					<div class="filter_checkbox">
+						<input type="checkbox" name="users_who_have_login_access" id="users_who_have_login_access" value="true">
+						<label class="search_label" for="users_who_have_login_access"><i18n:text key="circulation.user.users_who_have_login_access" /></label>
+					</div>
+					<div class="filter_checkbox">
+						<input type="checkbox" name="users_without_user_card" id="users_without_user_card" value="true">
+						<label class="search_label" for="users_without_user_card"><i18n:text key="circulation.user.users_without_user_card" /></label>
+					</div>
+					<div class="filter_checkbox">
+						<input type="checkbox" name="inactive_users_only" id="inactive_users_only" value="true">
+						<label class="search_label" for="inactive_users_only"><i18n:text key="circulation.user.inactive_users_only" /></label>
+					</div>
 				</div>
 
-				<div class="clear_search ico_clear" style="margin-top: 4px;">
-					<a href="javascript:void(0);" onclick="CirculationSearch.clearAdvancedSearch();">✕ <i18n:text key="search.common.clear_search" /></a>
+				<div class="fleft clear_search ico_clear">
+					<a href="javascript:void(0);" onclick="CirculationSearch.clearAdvancedSearch();"><i18n:text key="search.common.clear_search" /></a>
 				</div>
 
-				<div class="buttons" style="margin-top: 6px;">
+				<div class="buttons">
 					<a class="main_button arrow_right" onclick="CirculationSearch.search('advanced');"><i18n:text key="search.common.button.list_all" /></a>
 					<div class="clear"></div>
 				</div>
@@ -873,6 +947,7 @@
 		
 		<div class="search_results_area">
 			<div class="search_loading_indicator loading_indicator"></div>
+		
 			<div class="paging_bar"></div>
 		
 			<div class="search_results_box">
@@ -880,42 +955,49 @@
 				<textarea class="search_results_template template"><!-- 
 					{#foreach $T.data as record}
 						<div class="result {#cycle values=['odd', 'even']}" rel="{$T.record.id}">
+							<div class="buttons user_status_{$T.record.status}">
+								<a class="button center" rel="open_item" onclick="CirculationSearch.openResult('{$T.record.id}');"><i18n:text key="search.user.open_item_button" /></a>
+								{#if $T.record.status != 'blocked'}
+									<a class="button center" rel="block_user" onclick="CirculationSearch.blockUser('{$T.record.id}');"><i18n:text key="circulation.user.button.block" /></a>
+								{#else}
+									<a class="button center" rel="unblock_user" onclick="CirculationSearch.unblockUser('{$T.record.id}');"><i18n:text key="circulation.user.button.unblock" /></a>
+								{#/if}
+							</div>
 							<div class="record">
-								{#if $T.record.name}<label><i18n:text key="circulation.user_field.name" /></label>: <strong>{$T.record.name}</strong><br/>{#/if}
+								{#if $T.record.name}<label><i18n:text key="circulation.user_field.name" /></label>: {$T.record.name}<br/>{#/if}
 								<label><i18n:text key="circulation.user_field.id" /></label>: {$T.record.enrollment}<br/>
 								<label><i18n:text key="circulation.user_field.type" /></label>: {$T.record.type_name}<br/>
 								<div class="user_status_{$T.record.status}"><label><i18n:text key="circulation.user_field.status" /></label>: {_('circulation.user_status.' + $T.record.status)}</div>
-							</div>
-							<div class="buttons">
-								<a class="button center" rel="open_item" onclick="CirculationSearch.openResult('{$T.record.id}');">👉 <i18n:text key="search.user.open_item_button" /></a>
-								{#if $T.record.status != 'blocked'}
-									<a class="button center" rel="block_user" onclick="CirculationSearch.blockUser('{$T.record.id}');">🔒 <i18n:text key="circulation.user.button.block" /></a>
-								{#else}
-									<a class="button center" rel="unblock_user" onclick="CirculationSearch.unblockUser('{$T.record.id}');">🔓 <i18n:text key="circulation.user.button.unblock" /></a>
-								{#/if}
+	
+								<div class="ncspacer"></div>
+								<div class="ncspacer"></div>						
+								<label><i18n:text key="common.created" /></label>: {_d($T.record.created, 'd t')} {#if $T.record.modified && $T.record.modified != $T.record.created}&#160;&#160;&#160;<label><i18n:text key="common.modified" /></label>: {_d($T.record.modified, 'd t')}{#/if}
 							</div>
 							<div class="clear"></div>
 						</div>
 					{#/for}
 				--></textarea>
 			</div>
+			
 			<div class="paging_bar"></div>		
 		</div>
 	</div>	
 
-	<!-- POPUP DE FOTO -->
 	<div id="photo_upload_popup" class="popup">
-		<div class="close" onclick="CirculationInput.closePhotoUploadPopup();">✕ <i18n:text key="common.close" /></div>
+		<div class="close" onclick="CirculationInput.closePhotoUploadPopup();"><i18n:text key="common.close" /></div>
 
-		<fieldset style="border:none; padding:0; margin:0;">
-			<legend style="font-size:13px; font-weight:800; color:#0f172a; margin-bottom:8px;"><i18n:text key="circulation.user_field.photo" /></legend>
+		<fieldset>
+			<legend><i18n:text key="circulation.user_field.photo" /></legend>
+
 			<div id="photo_area"></div>
-			<div class="progress" style="margin: 8px 0;">
+
+			<div class="progress">
 				<div class="progress_bar">
 					<div class="progress_bar_outer"><div class="progress_bar_inner"></div></div>
 				</div>
 			</div>
-			<div class="buttons" style="display:flex; gap:6px; margin-top:8px;">
+			
+			<div class="buttons">
 				<a class="button" onclick="CirculationInput.closePhotoUploadPopup();"><i18n:text key="common.cancel" /></a>
 				<a class="button main_button" onclick="CirculationInput.applyPhotoSelection();"><i18n:text key="common.ok" /></a>
 			</div>			

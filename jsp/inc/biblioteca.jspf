@@ -159,8 +159,113 @@
         "portugues", "portuguesa", "lingua", "linguas", "escrita", "leitura", "leituras",
         "critica", "criticas", "ensaio", "ensaios", "biografia", "biografias",
         "popular", "populares", "tradicional", "tradicionais", "moderna", "moderno",
-        "classica", "classico", "americana", "americano"
+        "classica", "classico", "americana", "americano", "americanas", "americanos",
+        "inglesa", "ingles", "inglesas", "francesa", "frances", "francesas",
+        "porto", "portos", "cidade", "cidades", "estado", "estados", "pais", "paises",
+        "regiao", "regioes", "municipio", "municipios",
+        "literatura infantojuvenil", "literatura infantil", "literatura juvenil",
+        "literatura brasileira", "literatura infantojuvenil brasileira", "ficcao brasileira",
+        "ficcao juvenil", "ficcao infantojuvenil", "contos brasileiros", "poesia brasileira"
     ));
+
+    /* Texto sem acento, minúsculo e com espaços simples — chave de comparação. */
+    private String bibChave(String s) {
+        if (s == null) return "";
+        String nfd = java.text.Normalizer.normalize(s.toLowerCase(), java.text.Normalizer.Form.NFD);
+        return nfd.replaceAll("\\p{InCombiningDiacriticalMarks}+", "")
+                  .replaceAll("[^a-z0-9 ]", " ").replaceAll("\\s+", " ").trim();
+    }
+
+    /* =================================================================
+       LEITOR DE MARC (ISO 2709)
+       -----------------------------------------------------------------
+       O Biblivre grava cada registro em biblio_records.iso2709 no formato
+       ISO 2709 (UTF-8): líder de 24 posições, um diretório com a etiqueta,
+       o tamanho e a posição de cada campo, e depois os dados. Subcampos são
+       separados pelo caractere 0x1F e campos por 0x1E — por isso procurar
+       "650 ... $a" no texto nunca funciona. Aqui lemos o diretório de
+       verdade. Devolve os valores do subcampo pedido em todos os campos
+       com a etiqueta, na ordem do registro.
+       ================================================================= */
+    private java.util.List<String> bibMarcSubcampos(String iso2709, String etiqueta, char subcampo) {
+        java.util.List<String> valores = new java.util.ArrayList<String>();
+        if (iso2709 == null || iso2709.length() < 25) return valores;
+        try {
+            byte[] b = iso2709.getBytes("UTF-8");
+            int base = Integer.parseInt(new String(b, 12, 5, "US-ASCII").trim());
+            for (int i = 24; i + 12 <= b.length && b[i] != 0x1E && i + 12 <= base; i += 12) {
+                String tag = new String(b, i, 3, "US-ASCII");
+                if (!tag.equals(etiqueta)) continue;
+                int tam = Integer.parseInt(new String(b, i + 3, 4, "US-ASCII"));
+                int ini = Integer.parseInt(new String(b, i + 7, 5, "US-ASCII"));
+                if (base + ini + tam > b.length) continue;
+                String campo = new String(b, base + ini, tam, "UTF-8");
+                String[] partes = campo.split("\u001F");
+                for (int k = 1; k < partes.length; k++) {
+                    String parte = partes[k];
+                    if (parte.length() > 1 && parte.charAt(0) == subcampo) {
+                        String v = parte.substring(1).replace("\u001E", "").trim();
+                        v = v.replaceAll("[\\s.,;/:]+$", "").trim();
+                        if (v.length() > 0) valores.add(v);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // registro malformado: ignora
+        }
+        return valores;
+    }
+
+    /* Assuntos tópicos (MARC 650 $a) de um registro, sem repetir e sem
+       os genéricos demais ("Literatura infantojuvenil", "Porto"…). */
+    private java.util.List<String> bibAssuntos(String iso2709) {
+        java.util.List<String> out = new java.util.ArrayList<String>();
+        java.util.Set<String> vistos = new java.util.HashSet<String>();
+        for (String a : bibMarcSubcampos(iso2709, "650", 'a')) {
+            String chave = bibChave(a);
+            if (chave.length() < 4 || chave.length() > 60) continue;
+            if (BIB_STOPWORDS_ASSUNTO.contains(chave) || !vistos.add(chave)) continue;
+            out.add(a);
+        }
+        return out;
+    }
+
+    /* =================================================================
+       ALUNOS x FUNCIONÁRIOS
+       -----------------------------------------------------------------
+       O Biblivre vem com dois tipos de usuário: 1 = Leitor, 2 = Funcionário.
+       Detectamos pelo NOME do tipo (Funcionário, Professor, Servidor,
+       Docente, Equipe, Coordenação…), então funciona mesmo se você criou
+       outros tipos. Para fixar à mão, preencha BIB_TIPOS_FUNCIONARIO_FIXO
+       com os ids separados por vírgula, ex.: "2,5".
+       ================================================================= */
+    private static final String BIB_TIPOS_FUNCIONARIO_FIXO = "";
+
+    private String bibTiposFuncionario(java.sql.Connection conn, String schema) {
+        if (BIB_TIPOS_FUNCIONARIO_FIXO.matches("\\s*\\d+(\\s*,\\s*\\d+)*\\s*")) return BIB_TIPOS_FUNCIONARIO_FIXO.replaceAll("\\s", "");
+        StringBuilder ids = new StringBuilder();
+        java.sql.Statement st = null;
+        java.sql.ResultSet rs = null;
+        try {
+            st = conn.createStatement();
+            rs = st.executeQuery("SELECT id FROM " + schema + ".users_types " +
+                "WHERE name ~* '(func|profess|servidor|docente|equipe|coorden|diret|secretar|staff|bibliotec|admin)' ORDER BY id");
+            while (rs.next()) {
+                if (ids.length() > 0) ids.append(',');
+                ids.append(rs.getInt(1));
+            }
+        } catch (Exception ignored) {
+        } finally {
+            bibFechar(rs);
+            bibFechar(st);
+        }
+        return ids.length() > 0 ? ids.toString() : "2";
+    }
+
+    /* Trecho SQL: o usuário da coluna "colTipo" é funcionário? */
+    private String bibSqlEhFuncionario(java.sql.Connection conn, String schema, String colTipo) {
+        return "(COALESCE(" + colTipo + ", -1) IN (" + bibTiposFuncionario(conn, schema) + "))";
+    }
 
     /* "Ana Clara Souza" → "Ana C." — nome de aluno na página pública. */
     private String bibNomeCurto(String nome) {

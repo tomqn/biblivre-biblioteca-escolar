@@ -155,18 +155,16 @@
     }
 
     /* =========================================================
-       "TEMAS EM ALTA" DINÂMICO (substitui os pills fixos)
+       "TEMAS EM ALTA" — assuntos MARC 650 $a de verdade
        =========================================================
-       indexing_group_id = 4 é o campo de assunto (confirmado com o
-       bibliotecário). Os assuntos vêm concatenados sem delimitador,
-       então extraímos por PALAVRA e filtramos termos "de cola" que
-       aparecem em quase todo registro (literatura, infantojuvenil...).
-       Janela: últimos 30 dias corridos — muda sozinho dia a dia.
-       Sempre devolve "maxPalavras" pills: completa com uma lista de
-       reserva se faltar dado real, sem repetir o que já veio do banco. */
-
+       1) Pega os 50 livros mais emprestados nos últimos N dias.
+       2) Lê o iso2709 de cada um e extrai os 650 $a com o leitor
+          ISO 2709 de biblioteca.jspf (bibAssuntos) — cabeçalhos
+          inteiros, ex.: "Mitologia grega", não palavras soltas.
+       3) Conta em quantos desses livros cada assunto aparece.
+       4) Completa com a lista de reserva se faltar dado. */
     private static final String[] ASSUNTOS_FALLBACK = {
-        "aventura", "fantasia", "animais", "magia", "amizade", "misterio"
+        "Aventura", "Fantasia", "Animais", "Magia", "Amizade", "Mistério"
     };
 
     private String capitalizarPalavra(String palavra) {
@@ -176,69 +174,58 @@
 
     private List<String> obterAssuntosEmAlta(Connection conn, String schema, int diasJanela, int maxPalavras) {
         List<String> resultado = new ArrayList<String>();
+        final Map<String, Integer> frequencia = new HashMap<String, Integer>();
+        Map<String, String> formaBonita = new HashMap<String, String>();
+
         if (conn != null) {
             PreparedStatement ps = null;
             ResultSet rs = null;
             try {
-                String sql =
-                    "SELECT s.phrase " +
-                    "FROM " + schema + ".biblio_idx_sort s " +
-                    "WHERE s.indexing_group_id = 4 " +
-                    "AND s.record_id IN ( " +
-                    "    SELECT bh.record_id " +
-                    "    FROM " + schema + ".lendings l " +
-                    "    JOIN " + schema + ".biblio_holdings bh ON l.holding_id = bh.id " +
-                    "    WHERE l.created >= (CURRENT_DATE - (? || ' days')::interval) " +
-                    "    GROUP BY bh.record_id " +
-                    "    ORDER BY COUNT(l.id) DESC " +
-                    "    LIMIT 50 " +
-                    ")";
-                ps = conn.prepareStatement(sql);
+                ps = conn.prepareStatement(
+                    "SELECT br.iso2709 FROM " + schema + ".biblio_records br WHERE br.id IN (" +
+                    "  SELECT bh.record_id FROM " + schema + ".lendings l " +
+                    "  JOIN " + schema + ".biblio_holdings bh ON l.holding_id = bh.id " +
+                    "  WHERE l.created >= (CURRENT_DATE - (? || ' days')::interval) " +
+                    "  GROUP BY bh.record_id ORDER BY COUNT(l.id) DESC LIMIT 50)");
                 ps.setInt(1, diasJanela);
                 rs = ps.executeQuery();
-
-                Map<String, Integer> frequencia = new HashMap<String, Integer>();
                 while (rs.next()) {
-                    String frase = rs.getString("phrase");
-                    if (frase == null || frase.isEmpty()) continue;
-                    String[] palavras = frase.split("[^a-zA-Z]+");
-                    for (String p : palavras) {
-                        String pLower = p.toLowerCase();
-                        if (pLower.length() < 4) continue;
-                        if (BIB_STOPWORDS_ASSUNTO.contains(pLower)) continue;
-                        Integer atual = frequencia.get(pLower);
-                        frequencia.put(pLower, atual == null ? 1 : atual + 1);
+                    for (String assunto : bibAssuntos(rs.getString(1))) {
+                        String chave = bibChave(assunto);
+                        Integer atual = frequencia.get(chave);
+                        frequencia.put(chave, atual == null ? 1 : atual + 1);
+                        if (!formaBonita.containsKey(chave)) formaBonita.put(chave, assunto);
                     }
                 }
-
-                List<Map.Entry<String, Integer>> entradas = new ArrayList<Map.Entry<String, Integer>>(frequencia.entrySet());
-                Collections.sort(entradas, new Comparator<Map.Entry<String, Integer>>() {
-                    public int compare(Map.Entry<String, Integer> a, Map.Entry<String, Integer> b) {
-                        return b.getValue() - a.getValue();
-                    }
-                });
-
-                for (int i = 0; i < entradas.size() && resultado.size() < maxPalavras; i++) {
-                    resultado.add(entradas.get(i).getKey());
-                }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                bibLog(getServletContext(), "temas em alta", e);
             } finally {
                 closeQuietly(rs);
                 closeQuietly(ps);
             }
         }
 
-        for (int i = 0; resultado.size() < maxPalavras && i < ASSUNTOS_FALLBACK.length; i++) {
-            String candidato = ASSUNTOS_FALLBACK[i];
-            if (!resultado.contains(candidato)) {
-                resultado.add(candidato);
+        List<String> chaves = new ArrayList<String>(frequencia.keySet());
+        Collections.sort(chaves, new Comparator<String>() {
+            public int compare(String a, String b) {
+                int d = frequencia.get(b) - frequencia.get(a);
+                return d != 0 ? d : a.compareTo(b);
             }
+        });
+        Set<String> usadas = new HashSet<String>();
+        for (int i = 0; i < chaves.size() && resultado.size() < maxPalavras; i++) {
+            resultado.add(capitalizarPalavra(formaBonita.get(chaves.get(i))));
+            usadas.add(chaves.get(i));
+        }
+        for (int i = 0; resultado.size() < maxPalavras && i < ASSUNTOS_FALLBACK.length; i++) {
+            if (usadas.add(bibChave(ASSUNTOS_FALLBACK[i]))) resultado.add(ASSUNTOS_FALLBACK[i]);
         }
         return resultado;
     }
 %>
 
 <layout:head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" type="text/css" href="static/styles/biblivre.index.css" />
     <link rel="stylesheet" type="text/css" href="static/styles/biblivre.multi_schema.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1364,6 +1351,29 @@
         /* ---------- Filtro "Livros para": todos / 1º ao 5º / 6º em diante ---------- */
         var FAIXA_CHAVE = 'biblioteca.faixa';
 
+        var TIPO_LEITOR = 'todos';
+
+        function aplicarTipoLeitor(tipo) {
+            TIPO_LEITOR = (tipo === 'leitor' || tipo === 'funcionario') ? tipo : 'todos';
+            var btns = document.querySelectorAll('.reader-filter-btn');
+            for (var b = 0; b < btns.length; b++) {
+                var ativo = btns[b].getAttribute('data-tipo') === TIPO_LEITOR;
+                btns[b].className = 'theme-filter-btn reader-filter-btn' + (ativo ? ' active' : '');
+                btns[b].setAttribute('aria-selected', ativo ? 'true' : 'false');
+            }
+            var faixa = 'todas';
+            try { faixa = localStorage.getItem(FAIXA_CHAVE) || 'todas'; } catch (e) {}
+            reordenarRanking('#ranking-leitores', '.reader-card', faixa, 10, 'podium-');
+            var trilho = document.getElementById('ranking-leitores');
+            if (trilho) { trilho.scrollLeft = 0; atualizarCarrossel(trilho); }
+        }
+
+        function combinaTipo(el) {
+            if (TIPO_LEITOR === 'todos') return true;
+            var t = el.getAttribute('data-tipo');
+            return !t || t === TIPO_LEITOR;
+        }
+
         function combinaFaixa(el, faixa) {
             if (faixa === 'todas') return true;
             var f = el.getAttribute('data-faixa') || '';
@@ -1425,7 +1435,7 @@
             var pos = 0, maxQtd = 0;
             for (var i = 0; i < itens.length; i++) {
                 var el = itens[i];
-                var ok = combinaFaixa(el, faixa) && pos < limite;
+                var ok = combinaFaixa(el, faixa) && combinaTipo(el) && pos < limite;
                 el.hidden = !ok;
                 el.className = el.className.replace(new RegExp('\\b' + prefixo + '[1-3]\\b', 'g'), '').replace(/\s+/g, ' ').trim();
                 if (!ok) continue;
@@ -1446,7 +1456,7 @@
                     aviso = document.createElement('div');
                     aviso.className = 'no-results faixa-vazia';
                     aviso.style.gridColumn = '1 / -1';
-                    aviso.textContent = 'Ninguém dessa faixa no ranking deste mês ainda.';
+                    aviso.textContent = 'Ninguém com esse filtro no ranking deste mês ainda.';
                     box.appendChild(aviso);
                 }
                 aviso.hidden = false;
@@ -1844,7 +1854,9 @@ if (!req.isGlobalSchema()) {
             rsTurmas = stTurmas.executeQuery(
                 "SELECT x.turma, COUNT(*) AS total FROM (" +
                 "  SELECT " + sqlTurmaLeitor + " AS turma FROM " + schema + ".lendings l " +
-                "  WHERE l.created >= DATE_TRUNC('month', CURRENT_DATE) " +
+                "  JOIN " + schema + ".users u ON u.id = l.user_id " +
+                "  WHERE NOT " + bibSqlEhFuncionario(conn, schema, "u.type") +
+                "    AND l.created >= DATE_TRUNC('month', CURRENT_DATE) " +
                 "    AND l.created < (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month')" +
                 ") x WHERE x.turma IS NOT NULL GROUP BY x.turma");
             while (rsTurmas.next()) {
@@ -1939,12 +1951,12 @@ if (!req.isGlobalSchema()) {
         String[][] configuracaoTemas = {
             {"todas", "Todas", ""},
             {"fantasia", "Fantasia & Magia", "fantasia|magia|magic|brux|dragon|dragao|feitic|narnia|potter|hobbit|elfo|unicor|encant|monstro|duende|mitolog|percy jackson|varinha"},
-            {"princesa", "Princesas & Fadas", "princes|princip|fada|castel|rainha|rei|cinderel|branca de neve|adormecid|reino|coroa|sapo|rapunzel|sereia|bela e a fera"},
+            {"princesa", "Princesas & Fadas", "princes|princip|fada|castel|rainha|cinderel|branca de neve|adormecid|reino|coroa|rapunzel|sereia|bela e a fera"},
             {"quadrinhos", "HQ & Gibis", "quadrinho|gibi|hq|manga|monica|cebolinha|cascao|magali|super-heroi|heroi|vingador|batman|homem-aranha|marvel|dc|graphic novel"},
-            {"animais", "Animais & Bichos", "animal|animais|bicho|cao|cachorr|gato|felino|filhote|passaro|passarinho|dinossaur|fauna|floresta|selva|inseto|cavalo|leao|urso|lobo"},
+            {"animais", "Animais & Bichos", "animal|animais|bicho|cachorr|gato|felino|filhote|passaro|passarinho|dinossaur|fauna|floresta|selva|inseto|cavalo|leao|urso|lobo"},
             {"humor", "Humor", "humor|engracad|comedia|piada|risad|travessur|banana|diario de um banana|divert|palhaco|confusao|bagunca|rir"},
-            {"terror", "Terror & Mistério", "terror|horror|mister|suspens|fantas|assombr|vampir|zumbi|medo|pesadel|crime|detetiv|morte|sombra|arrepio|goosebumps"},
-            {"romance", "Romance & Amizade", "romance|amor|paixao|namor|namorado|beijo|coracao|amizade|sentimento|encontro|declaracao|amigas|amigos"},
+            {"terror", "Terror & Mistério", "terror|horror|mister|suspens|fantasm|assombr|vampir|zumbi|medo|pesadel|crime|detetiv|morte|sombra|arrepio|goosebumps"},
+            {"romance", "Romance & Amizade", "romance|amor|paixao|namor|beijo|coracao|amizade|sentimento|encontro|declaracao|amigas|amigos"},
             {"aventura", "Aventura & Ação", "aventur|viag|exped|tesour|ilha|batalh|sobreviv|pirat|espac|mar|navio|guerra|corrida|floresta|desafio"},
             {"ciencia", "Ciência & Espaço", "ciencia|cientist|espaco|planeta|astronom|terra|dinossauro|corpo humano|experiencia|descoberta|universo|robo|tecnolog|inven"},
             {"classicos", "Clássicos Infantis", "lobato|sitio do picapau|ruth rocha|ziraldo|ana maria machado|menino maluquinho|pedro bandeira|eva furnari|walcyr carrasco"}
@@ -2098,11 +2110,18 @@ if (!req.isGlobalSchema()) {
                 </div>
                 <div>
                     <h2 class="library-section-title">Clube da leitura · <%= mesAtual %></h2>
-                    <div class="library-section-subtitle">Leitores com maior número de empréstimos no mês</div>
+                    <div class="library-section-subtitle">Alunos e funcionários com maior número de empréstimos no mês</div>
                 </div>
             </div>
             <div class="library-section-badge">Ranking individual</div>
         </div>
+
+        <div class="library-theme-filters" role="tablist" aria-label="Filtro do clube da leitura">
+            <button type="button" class="theme-filter-btn reader-filter-btn active" role="tab" aria-selected="true" data-tipo="todos" onclick="aplicarTipoLeitor('todos');">Geral</button>
+            <button type="button" class="theme-filter-btn reader-filter-btn" role="tab" aria-selected="false" data-tipo="leitor" onclick="aplicarTipoLeitor('leitor');">Alunos</button>
+            <button type="button" class="theme-filter-btn reader-filter-btn" role="tab" aria-selected="false" data-tipo="funcionario" onclick="aplicarTipoLeitor('funcionario');">Funcionários</button>
+        </div>
+
         <div class="library-books-scroll" id="ranking-leitores">
         <%
         /* Nome abreviado ("Ana C.") na página pública — nada de nome
@@ -2112,30 +2131,33 @@ if (!req.isGlobalSchema()) {
         boolean hasLeitores = false;
         try {
             ps4 = conn.prepareStatement(
-                "SELECT u.name AS aluno, " + bibSqlTurma(conn, schema, "u.id") + " AS turma, COUNT(l.id) AS total_lido " +
+                "SELECT u.name AS aluno, " + bibSqlTurma(conn, schema, "u.id") + " AS turma, " +
+                bibSqlEhFuncionario(conn, schema, "u.type") + " AS funcionario, COUNT(l.id) AS total_lido " +
                 "FROM " + schema + ".users u " +
                 "JOIN " + schema + ".lendings l ON u.id = l.user_id " +
                 "WHERE l.created >= DATE_TRUNC('month', CURRENT_DATE) " +
                 "  AND l.created < (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month') " +
-                "GROUP BY u.id, u.name " +
+                "GROUP BY u.id, u.name, u.type " +
                 "ORDER BY total_lido DESC, u.name " +
-                "LIMIT 30");
+                "LIMIT 40");
             rs4 = ps4.executeQuery();
             int rank = 0;
             while (rs4.next()) {
                 hasLeitores = true;
                 rank++;
                 String nomeCurto = bibNomeCurto(rs4.getString("aluno"));
-                String turma = bibNormalizarTurma(rs4.getString("turma"));
-                String faixaLeitor = bibFaixaDaTurma(turma);
+                boolean funcionario = rs4.getBoolean("funcionario");
+                String turma = funcionario ? null : bibNormalizarTurma(rs4.getString("turma"));
+                /* funcionário não tem faixa: some quando o filtro é 1º–5º ou 6º+ */
+                String faixaLeitor = funcionario ? "x" : bibFaixaDaTurma(turma);
                 int qtdLivros = rs4.getInt("total_lido");
                 String podiumClass = (rank == 1) ? "podium-1" : (rank == 2) ? "podium-2" : (rank == 3) ? "podium-3" : "";
         %>
-            <div class="reader-card <%= podiumClass %>" data-faixa="<%= faixaLeitor == null ? "" : faixaLeitor %>"<%= rank > 10 ? " hidden" : "" %>>
+            <div class="reader-card <%= podiumClass %>" data-faixa="<%= faixaLeitor == null ? "" : faixaLeitor %>" data-tipo="<%= funcionario ? "funcionario" : "leitor" %>"<%= rank > 10 ? " hidden" : "" %>>
                 <span class="podium-badge"><%= rank <= 3 ? rank + "º lugar" : "" %></span>
                 <div class="reader-avatar" aria-hidden="true"><%= StringEscapeUtils.escapeHtml4(getIniciais(nomeCurto)) %></div>
                 <div class="reader-name"><%= StringEscapeUtils.escapeHtml4(nomeCurto) %></div>
-                <div class="reader-class"><%= turma != null ? "Turma " + StringEscapeUtils.escapeHtml4(turma) : "&nbsp;" %></div>
+                <div class="reader-class"><%= funcionario ? "Funcionário(a)" : turma != null ? "Turma " + StringEscapeUtils.escapeHtml4(turma) : "Aluno(a)" %></div>
                 <div class="reader-count"><%= qtdLivros %> <%= qtdLivros == 1 ? "livro lido" : "livros lidos" %></div>
             </div>
         <%  }

@@ -198,6 +198,32 @@ tem versão para impressão.
 Arquivos: `jsp/inc/biblioteca.jspf` (funções compartilhadas),
 `jsp/inc/painel_relatorios.jspf` e `jsp/administration/reports.jsp`.
 
+### 🔀 Incorporado da versão AI Studio / Devin
+
+- **Temas em alta pelo assunto MARC 650 $a** (cabeçalhos inteiros, como
+  "Mitologia grega"). A leitura do MARC foi refeita: o Biblivre grava o
+  registro em ISO 2709, com a etiqueta no diretório e os subcampos
+  separados por um caractere de controle, então procurar `650 ... $a` no
+  texto nunca encontrava nada. O leitor fica em `jsp/inc/biblioteca.jspf`
+  (`bibMarcSubcampos` / `bibAssuntos`) e serve à home e ao painel.
+- **Regex dos temas sem falsos positivos** ("rei", "sapo", "cão",
+  "fantas" → "fantasm").
+- **Clube da leitura com filtro Geral / Alunos / Funcionários**, que se
+  combina com o filtro de faixa. O card mostra "Turma 6A" ou
+  "Funcionário(a)" — nunca o e-mail.
+- **Desafio das turmas e ranking de turmas do painel só com alunos.**
+  Funcionários são reconhecidos pelo nome do tipo de usuário
+  (Funcionário, Professor, Servidor…); para fixar os ids, edite
+  `BIB_TIPOS_FUNCIONARIO_FIXO` em `jsp/inc/biblioteca.jspf`.
+- **Painel:** filtro "Quem" (alunos e funcionários / só alunos / só
+  funcionários), coluna Tipo em "Quem mais pegou livros", linha "Acervo
+  hoje" (títulos, exemplares, emprestados agora) e assuntos pelo 650 $a.
+- **Capas maiores nos resultados de busca** (112 px).
+- **Cadastro de usuários (`jsp/circulation/user.jsp`)** com o tema
+  escuro + verde da versão AI Studio.
+- Ficou de fora o "modo capa" por `?cover=`, que adivinhava a capa pelo
+  título — substituído pela capa por registro.
+
 ### 📐 Responsividade
 
 - Breakpoints únicos na home: 1100 / 900 / 640 / 400 px

@@ -1778,7 +1778,7 @@ body {
 .search_results .result_cover,
 .selected_highlight .result_cover {
   float: left;
-  width: 64px;
+  width: 112px; /* tamanho da versão AI Studio: capa legível na lista */
   aspect-ratio: 2 / 3;
   height: auto;
   margin: 2px var(--bb-space-4) var(--bb-space-2) 0;
@@ -1808,8 +1808,8 @@ body {
 
 .search_results .result_cover--vazia svg,
 .selected_highlight .result_cover--vazia svg {
-  width: 26px;
-  height: 26px;
+  width: 36px;
+  height: 36px;
 }
 
 .search_results .result .record,
@@ -2063,7 +2063,7 @@ body {
 
   .search_results .result_cover,
   .selected_highlight .result_cover {
-    width: 52px;
+    width: 76px;
     margin-right: var(--bb-space-3);
   }
 }

@@ -66,6 +66,9 @@
     if (rpPeriodo == null || !rpPeriodo.matches("mes|mes_anterior|ano|12m|personalizado")) rpPeriodo = "ano";
     String rpFaixa = request.getParameter("rp_faixa");
     if (rpFaixa == null || !rpFaixa.matches("f1|f2")) rpFaixa = "todas";
+    String rpPublico = request.getParameter("rp_publico");
+    if (rpPublico == null || !rpPublico.matches("alunos|funcionarios")) rpPublico = "todos";
+    if (!"todas".equals(rpFaixa)) rpPublico = "alunos"; // faixa de turma só faz sentido para alunos
 
     java.util.Calendar rpIni = rpHoje();
     java.util.Calendar rpFim = rpHoje();
@@ -94,7 +97,8 @@
     java.sql.Timestamp tsIni = new java.sql.Timestamp(rpIni.getTimeInMillis());
     java.sql.Timestamp tsFim = new java.sql.Timestamp(rpFimExcl.getTimeInMillis());
 
-    String rpRotuloFaixa = "f1".equals(rpFaixa) ? "1º ao 5º ano" : "f2".equals(rpFaixa) ? "6º ano em diante" : "todas as turmas";
+    String rpRotuloFaixa = "f1".equals(rpFaixa) ? "alunos do 1º ao 5º ano" : "f2".equals(rpFaixa) ? "alunos do 6º ano em diante"
+                         : "alunos".equals(rpPublico) ? "só alunos" : "funcionarios".equals(rpPublico) ? "só funcionários" : "alunos e funcionários";
 %>
 <% if (rpPode) { %>
 <style type="text/css">
@@ -137,6 +141,12 @@
         color: var(--rp-soft); font-size: 12px; font-weight: 600; text-decoration: none;
     }
     .rp-nav a:hover { border-color: var(--rp-blue); color: var(--rp-blue); }
+    .rp-acervo {
+        font-size: 13px; color: var(--rp-soft); background: var(--rp-bg);
+        border: 1px solid var(--rp-line); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px;
+    }
+    .rp-tipo { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: #eff6ff; color: #1d4ed8; white-space: nowrap; }
+    .rp-tipo.func { background: #f0fdf4; color: #15803d; }
     .rp-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr)); gap: 12px; margin-bottom: 16px; }
     .rp-kpi { background: #ffffff; border: 1px solid var(--rp-line); border-radius: 14px; padding: 14px 16px; }
     .rp-kpi .v { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; }
@@ -233,6 +243,14 @@
             <div><label for="rp_ate">Até</label><input type="date" name="rp_ate" id="rp_ate" value="<%= rpIso(rpFim.getTime()) %>" /></div>
         </div>
         <div class="rp-campo">
+            <label for="rp_publico">Quem</label>
+            <select name="rp_publico" id="rp_publico" onchange="rpTrocarPublico(this.value);">
+                <option value="todos"<%= "todos".equals(rpPublico) ? " selected" : "" %>>Alunos e funcionários</option>
+                <option value="alunos"<%= "alunos".equals(rpPublico) ? " selected" : "" %>>Só alunos</option>
+                <option value="funcionarios"<%= "funcionarios".equals(rpPublico) ? " selected" : "" %>>Só funcionários</option>
+            </select>
+        </div>
+        <div class="rp-campo" id="rp_campo_faixa"<%= "funcionarios".equals(rpPublico) ? " hidden" : "" %>>
             <label for="rp_faixa">Turmas</label>
             <select name="rp_faixa" id="rp_faixa">
                 <option value="todas"<%= "todas".equals(rpFaixa) ? " selected" : "" %>>Todas</option>
@@ -260,14 +278,22 @@
         rpConn = bibConexao();
         final String S = rpSchema;
         String turmaL = bibSqlTurma(rpConn, S, "l.user_id");
+        String ehFunc = bibSqlEhFuncionario(rpConn, S, "uf.type");
         String filtroFaixa = "f1".equals(rpFaixa) ? " AND " + turmaL + " ~ '^ *[1-5]'"
                            : "f2".equals(rpFaixa) ? " AND " + turmaL + " ~ '^ *[6-9]'" : "";
+        if ("alunos".equals(rpPublico)) {
+            filtroFaixa += " AND l.user_id IN (SELECT uf.id FROM " + S + ".users uf WHERE NOT " + ehFunc + ")";
+        } else if ("funcionarios".equals(rpPublico)) {
+            filtroFaixa += " AND l.user_id IN (SELECT uf.id FROM " + S + ".users uf WHERE " + ehFunc + ")";
+        }
+        String soAlunos = " AND l.user_id IN (SELECT uf.id FROM " + S + ".users uf WHERE NOT " + ehFunc + ")";
         String periodo = " l.created >= ? AND l.created < ? ";
 
         // ---------------------------------------------------------------
         // RESUMO
         // ---------------------------------------------------------------
         long kEmp = 0, kLeitores = 0, kTitulos = 0, kAtrasos = 0, kAlunos = 0;
+        long aObras = 0, aExemplares = 0, aEmprestados = 0;
         java.sql.PreparedStatement ps = null;
         java.sql.ResultSet rs = null;
         try {
@@ -286,24 +312,47 @@
             if (rs.next()) kAtrasos = rs.getLong(1);
             bibFechar(rs); bibFechar(ps);
 
+            ps = rpConn.prepareStatement("SELECT " +
+                "(SELECT COUNT(*) FROM " + S + ".biblio_records WHERE database = 'main') AS obras, " +
+                "(SELECT COUNT(*) FROM " + S + ".biblio_holdings WHERE database = 'main') AS exemplares, " +
+                "(SELECT COUNT(*) FROM " + S + ".lendings WHERE return_date IS NULL) AS emprestados");
+            rs = ps.executeQuery();
+            if (rs.next()) { aObras = rs.getLong(1); aExemplares = rs.getLong(2); aEmprestados = rs.getLong(3); }
+            bibFechar(rs); bibFechar(ps);
+
             String turmaU = bibSqlTurma(rpConn, S, "u.id");
             String filtroFaixaU = "f1".equals(rpFaixa) ? " AND t ~ '^ *[1-5]'" : "f2".equals(rpFaixa) ? " AND t ~ '^ *[6-9]'" : "";
             ps = rpConn.prepareStatement(
-                "SELECT COUNT(*) FROM (SELECT " + turmaU + " AS t FROM " + S + ".users u WHERE u.status <> 'inactive') x " +
+                "SELECT COUNT(*) FROM (SELECT " + turmaU + " AS t FROM " + S + ".users u WHERE u.status <> 'inactive' AND NOT " + bibSqlEhFuncionario(rpConn, S, "u.type") + ") x " +
                 "WHERE t IS NOT NULL" + filtroFaixaU);
             rs = ps.executeQuery();
             if (rs.next()) kAlunos = rs.getLong(1);
+            bibFechar(rs); bibFechar(ps);
+
+            if ("funcionarios".equals(rpPublico)) {
+                // com o filtro "só funcionários", a base do % é o total de funcionários ativos
+                ps = rpConn.prepareStatement("SELECT COUNT(*) FROM " + S + ".users u WHERE u.status <> 'inactive' AND " + bibSqlEhFuncionario(rpConn, S, "u.type"));
+                rs = ps.executeQuery();
+                if (rs.next()) kAlunos = rs.getLong(1);
+            }
         } catch (Exception e) {
             bibLog(getServletContext(), "painel/resumo", e);
         } finally {
             bibFechar(rs); bibFechar(ps);
         }
 %>
+    <div class="rp-acervo">
+        <strong>Acervo hoje:</strong> <%= rpNum(aObras) %> títulos · <%= rpNum(aExemplares) %> exemplares ·
+        <%= rpNum(aEmprestados) %> emprestados agora<%= aExemplares > 0 ? " (" + rpPct(100.0 * aEmprestados / aExemplares) + " do acervo fora da estante)" : "" %>
+    </div>
     <div class="rp-kpis">
         <div class="rp-kpi"><div class="v"><%= rpNum(kEmp) %></div><div class="r">empréstimos no período</div></div>
         <div class="rp-kpi"><div class="v"><%= rpNum(kLeitores) %></div><div class="r">leitores diferentes</div></div>
         <div class="rp-kpi"><div class="v"><%= kLeitores > 0 ? rpDec((double) kEmp / kLeitores) : "0" %></div><div class="r">livros por leitor, em média</div></div>
-        <div class="rp-kpi"><div class="v"><%= kAlunos > 0 ? rpPct(100.0 * Math.min(kLeitores, kAlunos) / kAlunos) : "—" %></div><div class="r"><%= kAlunos > 0 ? "dos " + rpNum(kAlunos) + " alunos com turma pegaram livro" : "cadastre a turma dos alunos" %></div></div>
+        <div class="rp-kpi"><div class="v"><%= kAlunos > 0 ? rpPct(100.0 * Math.min(kLeitores, kAlunos) / kAlunos) : "—" %></div><div class="r"><%=
+            "funcionarios".equals(rpPublico)
+                ? (kAlunos > 0 ? "dos " + rpNum(kAlunos) + " funcionários pegaram livro" : "nenhum funcionário cadastrado")
+                : (kAlunos > 0 ? "dos " + rpNum(kAlunos) + " alunos com turma pegaram livro" : "cadastre a turma dos alunos") %></div></div>
         <div class="rp-kpi"><div class="v"><%= rpNum(kTitulos) %></div><div class="r">títulos diferentes emprestados</div></div>
         <div class="rp-kpi<%= kAtrasos > 0 ? " alerta" : "" %>"><div class="v"><%= rpNum(kAtrasos) %></div><div class="r">devoluções atrasadas agora</div></div>
     </div>
@@ -455,7 +504,7 @@
         try {
             ps = rpConn.prepareStatement(
                 "SELECT t, COUNT(*) AS emp, COUNT(DISTINCT user_id) AS leitores FROM (" +
-                "  SELECT l.user_id, " + turmaL + " AS t FROM " + S + ".lendings l WHERE " + periodo + filtroFaixa +
+                "  SELECT l.user_id, " + turmaL + " AS t FROM " + S + ".lendings l WHERE " + periodo + filtroFaixa + soAlunos +
                 ") x WHERE t IS NOT NULL GROUP BY t");
             ps.setTimestamp(1, tsIni); ps.setTimestamp(2, tsFim);
             rs = ps.executeQuery();
@@ -468,7 +517,7 @@
             bibFechar(rs); bibFechar(ps);
 
             ps = rpConn.prepareStatement(
-                "SELECT t, COUNT(*) AS alunos FROM (SELECT " + bibSqlTurma(rpConn, S, "u.id") + " AS t FROM " + S + ".users u WHERE u.status <> 'inactive') x " +
+                "SELECT t, COUNT(*) AS alunos FROM (SELECT " + bibSqlTurma(rpConn, S, "u.id") + " AS t FROM " + S + ".users u WHERE u.status <> 'inactive' AND NOT " + bibSqlEhFuncionario(rpConn, S, "u.type") + ") x " +
                 "WHERE t IS NOT NULL GROUP BY t");
             rs = ps.executeQuery();
             while (rs.next()) {
@@ -500,7 +549,8 @@
             <button type="button" class="rp-btn" onclick="rpCsv('rp-turmas-tab', 'turmas');">Exportar CSV</button>
         </div>
         <div class="rp-wrap">
-<% if (!listaTurmas.isEmpty()) { %>
+<% if ("funcionarios".equals(rpPublico)) { %><div class="rp-vazio">O ranking de turmas vale só para alunos — troque o filtro "Quem" para vê-lo.</div>
+<% } else if (!listaTurmas.isEmpty()) { %>
             <table class="rp-tab" id="rp-turmas-tab">
                 <thead><tr><th class="pos">#</th><th>Turma</th><th class="n">Empréstimos</th><th class="rp-barra-cel"></th><th class="n">Leitores</th><th class="n">Alunos</th><th class="n">% que leu</th><th class="n">Livros/aluno</th></tr></thead>
                 <tbody>
@@ -533,24 +583,26 @@
 %>
     <section class="rp-card" id="rp-leitores">
         <div class="rp-card-head">
-            <div><h2>Quem mais pegou livros</h2><p>Os 50 leitores com mais empréstimos no período.</p></div>
+            <div><h2>Quem mais pegou livros</h2><p>Os 50 leitores com mais empréstimos no período, alunos e funcionários.</p></div>
             <button type="button" class="rp-btn" onclick="rpCsv('rp-leitores-tab', 'leitores');">Exportar CSV</button>
         </div>
         <div class="rp-wrap">
 <%
         try {
             ps = rpConn.prepareStatement(
-                "SELECT u.name, " + bibSqlTurma(rpConn, S, "u.id") + " AS turma, COUNT(*) AS emp, COUNT(DISTINCT bh.record_id) AS titulos, MAX(l.created) AS ultimo " +
+                "SELECT u.name, " + bibSqlTurma(rpConn, S, "u.id") + " AS turma, " + bibSqlEhFuncionario(rpConn, S, "u.type") + " AS func, COUNT(*) AS emp, COUNT(DISTINCT bh.record_id) AS titulos, MAX(l.created) AS ultimo " +
                 "FROM " + S + ".lendings l JOIN " + S + ".users u ON u.id = l.user_id " +
                 "JOIN " + S + ".biblio_holdings bh ON bh.id = l.holding_id " +
-                "WHERE " + periodo + filtroFaixa + " GROUP BY u.id, u.name ORDER BY emp DESC, u.name LIMIT 50");
+                "WHERE " + periodo + filtroFaixa + " GROUP BY u.id, u.name, u.type ORDER BY emp DESC, u.name LIMIT 50");
             ps.setTimestamp(1, tsIni); ps.setTimestamp(2, tsFim);
             rs = ps.executeQuery();
             int p = 0;
             while (rs.next()) {
-                if (p++ == 0) { %><table class="rp-tab" id="rp-leitores-tab"><thead><tr><th class="pos">#</th><th>Leitor</th><th>Turma</th><th class="n">Empréstimos</th><th class="n">Títulos</th><th>Último</th></tr></thead><tbody><% }
+                if (p++ == 0) { %><table class="rp-tab" id="rp-leitores-tab"><thead><tr><th class="pos">#</th><th>Leitor</th><th>Tipo</th><th>Turma</th><th class="n">Empréstimos</th><th class="n">Títulos</th><th>Último</th></tr></thead><tbody><% }
 %>
-                <tr><td class="pos"><%= p %>º</td><td class="t"><%= rpEsc(rs.getString("name")) %></td><td><%= rpEsc(bibNormalizarTurma(rs.getString("turma"))) %></td>
+                <tr><td class="pos"><%= p %>º</td><td class="t"><%= rpEsc(rs.getString("name")) %></td>
+                    <td><%= rs.getBoolean("func") ? "<span class=\"rp-tipo func\">Funcionário</span>" : "<span class=\"rp-tipo\">Aluno</span>" %></td>
+                    <td><%= rs.getBoolean("func") ? "" : rpEsc(bibNormalizarTurma(rs.getString("turma"))) %></td>
                     <td class="n"><strong><%= rs.getLong("emp") %></strong></td><td class="n"><%= rs.getLong("titulos") %></td><td><%= rpData(rs.getTimestamp("ultimo")) %></td></tr>
 <%
             }
@@ -610,20 +662,60 @@
         // ---------------------------------------------------------------
         // ASSUNTOS + DIAS DA SEMANA
         // ---------------------------------------------------------------
+        /* Assuntos = cabeçalhos MARC 650 $a de cada livro emprestado no
+           período, lidos do iso2709 (bibAssuntos). Conta empréstimos e
+           títulos por assunto. Se o acervo não tiver 650 preenchido, cai
+           para as palavras do índice de assunto do Biblivre. */
         java.util.List<Object[]> assuntos = new java.util.ArrayList<Object[]>();
+        boolean assuntosPorPalavra = false;
         try {
             ps = rpConn.prepareStatement(
-                "SELECT f.word, COUNT(DISTINCT l.id) AS emp, COUNT(DISTINCT bh.record_id) AS titulos " +
-                "FROM " + S + ".lendings l JOIN " + S + ".biblio_holdings bh ON bh.id = l.holding_id " +
-                "JOIN " + S + ".biblio_idx_fields f ON f.record_id = bh.record_id AND f.indexing_group_id = 4 " +
-                "WHERE " + periodo + filtroFaixa + " AND LENGTH(f.word) >= 4 " +
-                "GROUP BY f.word ORDER BY emp DESC LIMIT 80");
+                "SELECT br.iso2709, x.emp FROM (" +
+                "  SELECT bh.record_id, COUNT(*) AS emp FROM " + S + ".lendings l " +
+                "  JOIN " + S + ".biblio_holdings bh ON bh.id = l.holding_id " +
+                "  WHERE " + periodo + filtroFaixa + " GROUP BY bh.record_id" +
+                ") x JOIN " + S + ".biblio_records br ON br.id = x.record_id");
             ps.setTimestamp(1, tsIni); ps.setTimestamp(2, tsFim);
             rs = ps.executeQuery();
-            while (rs.next() && assuntos.size() < 20) {
-                String w = rs.getString("word");
-                if (w == null || BIB_STOPWORDS_ASSUNTO.contains(w.toLowerCase()) || w.matches(".*\\d.*")) continue;
-                assuntos.add(new Object[] { w, rs.getLong("emp"), rs.getLong("titulos") });
+            final java.util.Map<String, long[]> porAssunto = new java.util.HashMap<String, long[]>();
+            java.util.Map<String, String> bonito = new java.util.HashMap<String, String>();
+            while (rs.next()) {
+                long emp = rs.getLong("emp");
+                for (String a : bibAssuntos(rs.getString("iso2709"))) {
+                    String k = bibChave(a);
+                    long[] v = porAssunto.get(k);
+                    if (v == null) { v = new long[2]; porAssunto.put(k, v); bonito.put(k, a); }
+                    v[0] += emp; v[1]++;
+                }
+            }
+            bibFechar(rs); bibFechar(ps);
+            java.util.List<String> ks = new java.util.ArrayList<String>(porAssunto.keySet());
+            java.util.Collections.sort(ks, new java.util.Comparator<String>() {
+                public int compare(String a, String b) {
+                    int d = Long.compare(porAssunto.get(b)[0], porAssunto.get(a)[0]);
+                    return d != 0 ? d : a.compareTo(b);
+                }
+            });
+            for (int i = 0; i < ks.size() && i < 20; i++) {
+                long[] v = porAssunto.get(ks.get(i));
+                assuntos.add(new Object[] { bonito.get(ks.get(i)), v[0], v[1] });
+            }
+
+            if (assuntos.isEmpty()) {
+                assuntosPorPalavra = true;
+                ps = rpConn.prepareStatement(
+                    "SELECT f.word, COUNT(DISTINCT l.id) AS emp, COUNT(DISTINCT bh.record_id) AS titulos " +
+                    "FROM " + S + ".lendings l JOIN " + S + ".biblio_holdings bh ON bh.id = l.holding_id " +
+                    "JOIN " + S + ".biblio_idx_fields f ON f.record_id = bh.record_id AND f.indexing_group_id = 4 " +
+                    "WHERE " + periodo + filtroFaixa + " AND LENGTH(f.word) >= 4 " +
+                    "GROUP BY f.word ORDER BY emp DESC LIMIT 80");
+                ps.setTimestamp(1, tsIni); ps.setTimestamp(2, tsFim);
+                rs = ps.executeQuery();
+                while (rs.next() && assuntos.size() < 20) {
+                    String w = rs.getString("word");
+                    if (w == null || BIB_STOPWORDS_ASSUNTO.contains(w.toLowerCase()) || w.matches(".*\\d.*")) continue;
+                    assuntos.add(new Object[] { w, rs.getLong("emp"), rs.getLong("titulos") });
+                }
             }
         } catch (Exception e) {
             bibLog(getServletContext(), "painel/assuntos", e);
@@ -651,7 +743,7 @@
     <div class="rp-grid">
     <section class="rp-card" id="rp-assuntos">
         <div class="rp-card-head">
-            <div><h2>Assuntos mais lidos</h2><p>Palavras dos assuntos (campo 650 e afins) dos livros emprestados.</p></div>
+            <div><h2>Assuntos mais lidos</h2><p><%= assuntosPorPalavra ? "Palavras do índice de assunto (os livros emprestados não têm o campo 650 preenchido)." : "Assuntos tópicos (MARC 650 $a) dos livros emprestados no período." %></p></div>
             <button type="button" class="rp-btn" onclick="rpCsv('rp-assuntos-tab', 'assuntos');">Exportar CSV</button>
         </div>
         <div class="rp-wrap">
@@ -755,7 +847,13 @@
         var d = document.getElementById('rp_datas');
         if (d) d.hidden = (v !== 'personalizado');
     }
+    function rpTrocarPublico(v) {
+        var f = document.getElementById('rp_campo_faixa');
+        if (f) f.hidden = (v === 'funcionarios');
+        if (v !== 'alunos') document.getElementById('rp_faixa').value = 'todas';
+    }
     function rpEnviar(form) {
+        if (form.rp_publico.value === 'funcionarios') form.rp_faixa.disabled = true;
         // datas só vão na URL quando o período é personalizado
         if (form.rp_periodo.value !== 'personalizado') {
             form.rp_de.disabled = true;
