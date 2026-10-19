@@ -148,8 +148,8 @@ Arquivos: `jsp/capa.jsp`, `static/scripts/biblivre.capas.js`, seção 14 de
   edite `BIB_CAMPO_TURMA_FIXO` em `jsp/inc/biblioteca.jspf`.
 - **Nome abreviado na página pública:** o Clube da leitura mostra
   "Ana C." em vez do nome completo.
-- **Sem senha no código:** todas as páginas usam a conexão do próprio
-  Biblivre (`jdbc/biblivre4`). A senha fica só no `context.xml` do Tomcat.
+- **Sem senha no código das páginas:** todas usam a conexão do próprio
+  Biblivre (`jdbc/biblivre4`), configurada no `context.xml` do Tomcat.
 - **Erros vão para o log** do Tomcat (`catalina.out`) em vez de sumirem.
 
 #### ⚠️ Domínio biblivre.org.br não é mais do projeto
@@ -173,17 +173,26 @@ resposta aparece na tela sem filtro. Por isso:
   127.0.0.1 biblivre.org.br www.biblivre.org.br update.biblivre.org.br
   ```
 
-#### Trocar a senha padrão do banco (fazer no servidor)
+#### Senhas padrão: o que trocar e o que NÃO trocar
 
-O Biblivre vem com a senha `abracadabra`, que é pública. Para trocar:
+O Biblivre usa a senha `abracadabra` em dois lugares diferentes:
 
-1. No PostgreSQL: `ALTER ROLE biblivre WITH PASSWORD 'uma-senha-forte';`
-   (faça o mesmo para `postgres` se ele também usa a senha padrão).
-2. No Tomcat, abra o arquivo de contexto do Biblivre
-   (`conf/Catalina/localhost/Biblivre4.xml` ou
-   `webapps/Biblivre4/META-INF/context.xml`) e troque `password="abracadabra"`
-   pela senha nova em todos os `<Resource>`.
-3. Reinicie o Tomcat.
+1. **Login do administrador no site** — TROQUE. É a senha que qualquer
+   pessoa na rede (alunos inclusive) pode tentar na tela de login. Entre
+   como administrador e use *Administração → Trocar senha* (é o "Resolver
+   isto" do aviso vermelho no topo).
+2. **Usuário `biblivre` do banco PostgreSQL** — NÃO troque. O programa
+   compilado do Biblivre usa essa senha fixa para fazer backup, restaurar
+   e criar bibliotecas (`PGPASSWORD=abracadabra` em `BackupBO`,
+   `RestoreBO` e `Schemas`). Trocando, os backups param de funcionar.
+   A proteção certa é o banco só aceitar conexões do próprio servidor:
+   - `postgresql.conf`: `listen_addresses = 'localhost'`
+   - `pg_hba.conf`: só linhas com `127.0.0.1/32` e `::1/128` (nada de
+     `0.0.0.0/0`, `all` ou a faixa da rede da escola)
+   - Firewall: a porta 5432 não deve estar liberada para a rede.
+
+   Assim, mesmo sendo pública, a senha do banco só funciona para quem já
+   está dentro do servidor.
 
 ### 🎒 Filtro por faixa na página inicial
 
