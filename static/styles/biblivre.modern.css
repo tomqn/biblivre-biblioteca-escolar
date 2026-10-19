@@ -2071,3 +2071,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .capa-painel__preview--carregando svg { animation: none; }
 }
+
+/* O aviso de "nova versão" do Biblivre vem de update.biblivre.org.br,
+   domínio que não pertence mais ao projeto. Fica sempre oculto. */
+.system_warning_new_version { display: none !important; }

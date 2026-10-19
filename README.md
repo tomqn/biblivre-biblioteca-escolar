@@ -152,6 +152,27 @@ Arquivos: `jsp/capa.jsp`, `static/scripts/biblivre.capas.js`, seção 14 de
   Biblivre (`jdbc/biblivre4`). A senha fica só no `context.xml` do Tomcat.
 - **Erros vão para o log** do Tomcat (`catalina.out`) em vez de sumirem.
 
+#### ⚠️ Domínio biblivre.org.br não é mais do projeto
+
+O endereço `biblivre.org.br` hoje abre um site de apostas. A parte
+compilada do Biblivre ainda aponta para ele no logo do topo, no rodapé, no
+link de ajuda e na checagem de "nova versão". Essa checagem é feita pelo
+servidor no login do administrador (`update.biblivre.org.br`), e a
+resposta aparece na tela sem filtro. Por isso:
+
+- `static/scripts/menu-inicio.js` troca esses links (logo → página
+  inicial da biblioteca; demais → GitHub oficial) e remove o aviso de
+  "nova versão"; o CSS também o mantém oculto.
+- **No servidor**, bloqueie o domínio para o Biblivre nem chegar a
+  consultá-lo. Adicione ao arquivo de hosts e reinicie o Tomcat:
+  - Windows: `C:\Windows\System32\drivers\etc\hosts` (abrir o Bloco de
+    Notas como administrador)
+  - Linux: `/etc/hosts`
+
+  ```
+  127.0.0.1 biblivre.org.br www.biblivre.org.br update.biblivre.org.br
+  ```
+
 #### Trocar a senha padrão do banco (fazer no servidor)
 
 O Biblivre vem com a senha `abracadabra`, que é pública. Para trocar:
