@@ -1486,3 +1486,52 @@ $(document).ready(function() {
 		});
 	}
 });
+
+/* ==========================================================================
+   Tema da biblioteca em TODAS as páginas
+   --------------------------------------------------------------------------
+   O Biblivre carrega este arquivo em todas as telas (pelo cabeçalho
+   compilado). Se a página não incluiu o tema moderno ou o menu "Início"
+   — páginas que não foram redesenhadas, como manutenção, progresso, erro,
+   configuração inicial, ou uma JSP antiga esquecida no servidor —, eles
+   são adicionados aqui. Páginas que já os incluem não são afetadas.
+   ========================================================================== */
+(function() {
+	var head = document.getElementsByTagName('head')[0];
+	if (!head) return;
+
+	function jaTem(seletor) {
+		return !!document.querySelector(seletor);
+	}
+
+	function completar() {
+		// só checa depois que o <head> inteiro foi lido (os <link> da página
+		// vêm depois deste script); o tema entra por último, para vencer os
+		// CSS de cada módulo
+		if (!jaTem('link[href*="biblivre.modern.css"]')) {
+			if (!jaTem('link[href*="Plus+Jakarta+Sans"]')) {
+				var fonte = document.createElement('link');
+				fonte.rel = 'stylesheet';
+				fonte.href = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap';
+				head.appendChild(fonte);
+			}
+			var tema = document.createElement('link');
+			tema.rel = 'stylesheet';
+			tema.type = 'text/css';
+			tema.href = 'static/styles/biblivre.modern.css';
+			head.appendChild(tema);
+		}
+		if (!jaTem('script[src*="menu-inicio.js"]')) {
+			var menu = document.createElement('script');
+			menu.type = 'text/javascript';
+			menu.src = 'static/scripts/menu-inicio.js';
+			document.body.appendChild(menu);
+		}
+	}
+
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', completar);
+	} else {
+		completar();
+	}
+})();
